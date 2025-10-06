@@ -23,7 +23,7 @@ WITH
     AUTO_SUSPEND = 3600
     AUTO_RESUME = TRUE
     INITIALLY_SUSPENDED = FALSE
-COMMENT = 'tko ai production warehouse with 1-hour auto-suspend policy';
+COMMENT = 'tko agentic ai production warehouse with 1-hour auto-suspend policy';
 GRANT USAGE, OPERATE ON WAREHOUSE tko_ai_production_wh TO ROLE tko_ai_production_rl;
 
 -- 3. Create tables for sales data
