@@ -1,34 +1,33 @@
 -- 1. Create consumer role
 USE ROLE ACCOUNTADMIN;
-CREATE OR REPLACE ROLE tko_ai_production_rl;
-GRANT DATABASE ROLE SNOWFLAKE.CORTEX_USER TO ROLE tko_ai_production_rl;
+CREATE ROLE IF NOT EXISTS TECHUP25_RL;
+GRANT DATABASE ROLE SNOWFLAKE.CORTEX_USER TO ROLE TECHUP25_RL;
 SET my_user = CURRENT_USER();
-GRANT ROLE tko_ai_production_RL to user IDENTIFIER($my_user);
+GRANT ROLE TECHUP25_RL to user IDENTIFIER($my_user);
 
 -- 2. Create database, schema, and warehouse
-CREATE OR REPLACE DATABASE tko_ai_production;
-CREATE OR REPLACE SCHEMA tko_ai_production.data;
-GRANT USAGE ON DATABASE tko_ai_production TO ROLE tko_ai_production_rl;
-GRANT USAGE ON SCHEMA tko_ai_production.data TO ROLE tko_ai_production_rl;
+CREATE DATABASE IF NOT EXISTS TECHUP25;
+CREATE SCHEMA IF NOT EXISTS TECHUP25.AGENTIC_AI;
+GRANT USAGE ON DATABASE TECHUP25 TO ROLE TECHUP25_RL;
+GRANT USAGE ON SCHEMA TECHUP25.AGENTIC_AI TO ROLE TECHUP25_RL;
 
-CREATE DATABASE IF NOT EXISTS tko_ai_production;
-CREATE SCHEMA IF NOT EXISTS tko_ai_production.agents;
-GRANT USAGE ON DATABASE tko_ai_production TO ROLE tko_ai_production_rl;
-GRANT USAGE ON SCHEMA tko_ai_production.agents TO ROLE tko_ai_production_rl;
-GRANT CREATE AGENT ON SCHEMA tko_ai_production.agents TO ROLE tko_ai_production_rl;
-
-CREATE OR REPLACE WAREHOUSE tko_ai_production_wh
+CREATE DATABASE IF NOT EXISTS TECHUP25;
+CREATE SCHEMA IF NOT EXISTS TECHUP25.AGENTIC_AI;
+GRANT USAGE ON DATABASE TECHUP25 TO ROLE TECHUP25_RL;
+GRANT USAGE ON SCHEMA TECHUP25.AGENTIC_AI TO ROLE TECHUP25_RL;
+GRANT CREATE AGENT ON SCHEMA TECHUP25.AGENTIC_AI TO ROLE TECHUP25_RL;
+CREATE WAREHOUSE IF NOT EXISTS TECHUP25_wh
 WITH 
     WAREHOUSE_SIZE = 'SMALL'
     AUTO_SUSPEND = 3600
     AUTO_RESUME = TRUE
     INITIALLY_SUSPENDED = FALSE
-COMMENT = 'tko agentic ai production warehouse with 1-hour auto-suspend policy';
-GRANT USAGE, OPERATE ON WAREHOUSE tko_ai_production_wh TO ROLE tko_ai_production_rl;
+COMMENT = 'TechUp Warehouse with 1-hour auto-suspend policy';
+GRANT USAGE, OPERATE ON WAREHOUSE TECHUP25_wh TO ROLE TECHUP25_RL;
 
 -- 3. Create tables for sales data
-USE DATABASE tko_ai_production;
-USE SCHEMA data;
+USE DATABASE TECHUP25;
+USE SCHEMA AGENTIC_AI;
 
 CREATE TABLE sales_conversations (
     conversation_id VARCHAR,
@@ -40,7 +39,7 @@ CREATE TABLE sales_conversations (
     deal_value FLOAT,
     product_line VARCHAR
 );
-GRANT SELECT ON TABLE sales_conversations TO ROLE tko_ai_production_rl;
+GRANT SELECT ON TABLE sales_conversations TO ROLE TECHUP25_RL;
 
 CREATE TABLE sales_metrics (
     deal_id VARCHAR,
@@ -52,7 +51,7 @@ CREATE TABLE sales_metrics (
     sales_rep VARCHAR,
     product_line VARCHAR
 );
-GRANT SELECT ON TABLE sales_metrics TO ROLE tko_ai_production_rl;
+GRANT SELECT ON TABLE sales_metrics TO ROLE TECHUP25_RL;
 
 INSERT INTO sales_conversations 
 (conversation_id, transcript_text, customer_name, deal_stage, sales_rep, conversation_date, deal_value, product_line)
@@ -110,7 +109,7 @@ ALTER TABLE sales_conversations SET CHANGE_TRACKING = TRUE;
 CREATE OR REPLACE CORTEX SEARCH SERVICE sales_conversation_search
   ON transcript_text
   ATTRIBUTES customer_name, deal_stage, sales_rep, product_line, conversation_date, deal_value
-  WAREHOUSE = tko_ai_production_wh
+  WAREHOUSE = TECHUP25_wh
   TARGET_LAG = '1 hour'
   AS (
     SELECT
@@ -124,19 +123,19 @@ CREATE OR REPLACE CORTEX SEARCH SERVICE sales_conversation_search
         product_line
     FROM sales_conversations
 );
-GRANT USAGE ON CORTEX SEARCH SERVICE sales_conversation_search TO ROLE tko_ai_production_rl;
+GRANT USAGE ON CORTEX SEARCH SERVICE sales_conversation_search TO ROLE TECHUP25_RL;
 
 -- 5. Create Stage
 -- CREATE OR REPLACE STAGE models DIRECTORY = (ENABLE = TRUE);
-GRANT READ ON STAGE models TO ROLE tko_ai_production_rl;
+GRANT READ ON STAGE models TO ROLE TECHUP25_RL;
 
 -- 6. Enable cross region inference (required to use claude-4-sonnet)
 ALTER ACCOUNT SET CORTEX_ENABLED_CROSS_REGION = 'AWS_US';
 
 --7. Upload the semantic model
--- PUT file://sales_metrics_model.yaml @tko_ai_production.data.models AUTO_COMPRESS=false;
+-- PUT file://sales_metrics_model.yaml @TECHUP25.AGENTIC_AI.models AUTO_COMPRESS=false;
 CALL SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML(
-  'tko_ai_production.data',
+  'TECHUP25.AGENTIC_AI',
   $$
 name: sales_metrics_sv
 description: Sales metrics and analytics model
@@ -264,29 +263,29 @@ tables:
 );
 
 --8. Create mcp server
-create or replace mcp server tko_ai_production_mcp_server from specification
+create or replace mcp server TECHUP25_mcp_server from specification
 $$
 tools:
   - name: "Support Tickets Search Service"
-    identifier: "tko_ai_production.data.sales_conversation_search"
+    identifier: "TECHUP25.AGENTIC_AI.sales_conversation_search"
     type: "CORTEX_SEARCH_SERVICE_QUERY"
     description: "A tool that performs keyword and vector search over sales conversations."
     title: "Sales Conversations"
 
   - name: "Sales Metrics"
-    identifier: "tko_ai_production.data.sales_metrics_sv"
+    identifier: "TECHUP25.AGENTIC_AI.sales_metrics_sv"
     type: "CORTEX_ANALYST_MESSAGE"
     description: "A tool that performs structured data analysis over sales metrics."
     title: "Sales Metrics"
     config:
-        warehouse: "tko_ai_production_wh"
+        warehouse: "TECHUP25_wh"
 $$;
 
--- 9. Open Cussor and set the Snowflake_tko_ai_production as the MCP server
+-- 9. Open Cussor and set the Snowflake_TECHUP25 as the MCP server
 
 -- add the following to your .cursor/mcp.json.
---    "Snowflake_tko_ai_production": {
---        "url": "https://{your_org_name}.{your_account_name}.snowflakecomputing.com/api/v2/databases/tko_ai_production/schemas/data/mcp-servers/tko_ai_production_mcp_server",
+--    "Snowflake_TECHUP25": {
+--        "url": "https://{your_org_name}.{your_account_name}.snowflakecomputing.com/api/v2/databases/TECHUP25/schemas/data/mcp-servers/TECHUP25_mcp_server",
 --            "headers": {
 --              "Authorization": "Bearer {your_pat_token}"
 --            }
