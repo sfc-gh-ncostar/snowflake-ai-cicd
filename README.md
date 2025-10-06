@@ -26,7 +26,7 @@ Run `setup.sql` in a Snowflake worksheet or via `snowsql`.
 - Creates role: `TECHUP25_RL`
 - Creates database, schemas, and warehouse:
   - Database: `TECHUP25`
-  - Schemas: `TECHUP25.AGENTIC_AI`, `TECHUP25AGENTIC_AI`
+  - Schemas: `TECHUP25.AGENTIC_AI`
   - Warehouse: `TECHUP25_wh`
 - Seeds tables with sample data:
   - `data.sales_conversations`
