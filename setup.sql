@@ -1,33 +1,33 @@
 -- 1. Create consumer role
 USE ROLE ACCOUNTADMIN;
-CREATE OR REPLACE ROLE sales_intelligence_rl;
-GRANT DATABASE ROLE SNOWFLAKE.CORTEX_USER TO ROLE sales_intelligence_rl;
+CREATE OR REPLACE ROLE tko_ai_production_rl;
+GRANT DATABASE ROLE SNOWFLAKE.CORTEX_USER TO ROLE tko_ai_production_rl;
 SET my_user = CURRENT_USER();
-GRANT ROLE SALES_INTELLIGENCE_RL to user IDENTIFIER($my_user);
+GRANT ROLE tko_ai_production_RL to user IDENTIFIER($my_user);
 
 -- 2. Create database, schema, and warehouse
-CREATE OR REPLACE DATABASE sales_intelligence;
-CREATE OR REPLACE SCHEMA sales_intelligence.data;
-GRANT USAGE ON DATABASE sales_intelligence TO ROLE sales_intelligence_rl;
-GRANT USAGE ON SCHEMA sales_intelligence.data TO ROLE sales_intelligence_rl;
+CREATE OR REPLACE DATABASE tko_ai_production;
+CREATE OR REPLACE SCHEMA tko_ai_production.data;
+GRANT USAGE ON DATABASE tko_ai_production TO ROLE tko_ai_production_rl;
+GRANT USAGE ON SCHEMA tko_ai_production.data TO ROLE tko_ai_production_rl;
 
-CREATE DATABASE IF NOT EXISTS snowflake_intelligence;
-CREATE SCHEMA IF NOT EXISTS snowflake_intelligence.agents;
-GRANT USAGE ON DATABASE snowflake_intelligence TO ROLE sales_intelligence_rl;
-GRANT USAGE ON SCHEMA snowflake_intelligence.agents TO ROLE sales_intelligence_rl;
-GRANT CREATE AGENT ON SCHEMA snowflake_intelligence.agents TO ROLE sales_intelligence_rl;
+CREATE DATABASE IF NOT EXISTS tko_ai_production;
+CREATE SCHEMA IF NOT EXISTS tko_ai_production.agents;
+GRANT USAGE ON DATABASE tko_ai_production TO ROLE tko_ai_production_rl;
+GRANT USAGE ON SCHEMA tko_ai_production.agents TO ROLE tko_ai_production_rl;
+GRANT CREATE AGENT ON SCHEMA tko_ai_production.agents TO ROLE tko_ai_production_rl;
 
-CREATE OR REPLACE WAREHOUSE sales_intelligence_wh
+CREATE OR REPLACE WAREHOUSE tko_ai_production_wh
 WITH 
     WAREHOUSE_SIZE = 'SMALL'
     AUTO_SUSPEND = 3600
     AUTO_RESUME = TRUE
     INITIALLY_SUSPENDED = FALSE
-COMMENT = 'Sales intelligence warehouse with 1-hour auto-suspend policy';
-GRANT USAGE, OPERATE ON WAREHOUSE sales_intelligence_wh TO ROLE sales_intelligence_rl;
+COMMENT = 'tko ai production warehouse with 1-hour auto-suspend policy';
+GRANT USAGE, OPERATE ON WAREHOUSE tko_ai_production_wh TO ROLE tko_ai_production_rl;
 
 -- 3. Create tables for sales data
-USE DATABASE sales_intelligence;
+USE DATABASE tko_ai_production;
 USE SCHEMA data;
 
 CREATE TABLE sales_conversations (
@@ -40,7 +40,7 @@ CREATE TABLE sales_conversations (
     deal_value FLOAT,
     product_line VARCHAR
 );
-GRANT SELECT ON TABLE sales_conversations TO ROLE sales_intelligence_rl;
+GRANT SELECT ON TABLE sales_conversations TO ROLE tko_ai_production_rl;
 
 CREATE TABLE sales_metrics (
     deal_id VARCHAR,
@@ -52,7 +52,7 @@ CREATE TABLE sales_metrics (
     sales_rep VARCHAR,
     product_line VARCHAR
 );
-GRANT SELECT ON TABLE sales_metrics TO ROLE sales_intelligence_rl;
+GRANT SELECT ON TABLE sales_metrics TO ROLE tko_ai_production_rl;
 
 INSERT INTO sales_conversations 
 (conversation_id, transcript_text, customer_name, deal_stage, sales_rep, conversation_date, deal_value, product_line)
@@ -110,7 +110,7 @@ ALTER TABLE sales_conversations SET CHANGE_TRACKING = TRUE;
 CREATE OR REPLACE CORTEX SEARCH SERVICE sales_conversation_search
   ON transcript_text
   ATTRIBUTES customer_name, deal_stage, sales_rep, product_line, conversation_date, deal_value
-  WAREHOUSE = sales_intelligence_wh
+  WAREHOUSE = tko_ai_production_wh
   TARGET_LAG = '1 hour'
   AS (
     SELECT
@@ -124,11 +124,171 @@ CREATE OR REPLACE CORTEX SEARCH SERVICE sales_conversation_search
         product_line
     FROM sales_conversations
 );
-GRANT USAGE ON CORTEX SEARCH SERVICE sales_conversation_search TO ROLE sales_intelligence_rl;
+GRANT USAGE ON CORTEX SEARCH SERVICE sales_conversation_search TO ROLE tko_ai_production_rl;
 
 -- 5. Create Stage
-CREATE OR REPLACE STAGE models DIRECTORY = (ENABLE = TRUE);
-GRANT READ ON STAGE models TO ROLE sales_intelligence_rl;
+-- CREATE OR REPLACE STAGE models DIRECTORY = (ENABLE = TRUE);
+GRANT READ ON STAGE models TO ROLE tko_ai_production_rl;
 
 -- 6. Enable cross region inference (required to use claude-4-sonnet)
 ALTER ACCOUNT SET CORTEX_ENABLED_CROSS_REGION = 'AWS_US';
+
+--7. Upload the semantic model
+-- PUT file://sales_metrics_model.yaml @tko_ai_production.data.models AUTO_COMPRESS=false;
+CALL SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML(
+  'tko_ai_production.data',
+  $$
+name: sales_metrics_sv
+description: Sales metrics and analytics model
+tables:
+  - name: SALES_METRICS
+    base_table:
+      database: SALES_INTELLIGENCE
+      schema: DATA
+      table: SALES_METRICS
+    dimensions:
+      - name: DEAL_ID
+        expr: DEAL_ID
+        data_type: VARCHAR(16777216)
+        sample_values:
+          - DEAL001
+          - DEAL002
+          - DEAL003
+        description: Unique identifier for a sales deal, used to track and analyze individual sales agreements.
+        synonyms:
+          - Transaction ID
+          - Agreement ID
+          - Contract ID
+          - Sale ID
+          - Order ID
+          - Deal Number
+      - name: CUSTOMER_NAME
+        expr: CUSTOMER_NAME
+        data_type: VARCHAR(16777216)
+        sample_values:
+          - TechCorp Inc
+          - SmallBiz Solutions
+          - SecureBank Ltd
+        description: The name of the customer associated with a particular sale or transaction.
+        synonyms:
+          - client
+          - buyer
+          - purchaser
+          - account_name
+          - account_holder
+      - name: SALES_STAGE
+        expr: SALES_STAGE
+        data_type: VARCHAR(16777216)
+        sample_values:
+          - Closed
+          - Lost
+          - Pending
+        description: The current stage of a sales opportunity, indicating whether it has been successfully closed, lost to a competitor, or is still pending a decision.
+        synonyms:
+          - deal_status
+          - sales_phase
+          - opportunity_state
+          - pipeline_position
+      - name: WIN_STATUS
+        expr: WIN_STATUS
+        data_type: BOOLEAN
+        sample_values:
+          - 'TRUE'
+          - 'FALSE'
+        description: Indicates whether a sale was won (TRUE) or lost (FALSE).
+        synonyms:
+          - won
+          - success
+          - closed
+          - converted
+          - achieved
+          - accomplished
+      - name: SALES_REP
+        expr: SALES_REP
+        data_type: VARCHAR(16777216)
+        sample_values:
+          - Sarah Johnson
+          - Mike Chen
+          - Rachel Torres
+        description: The sales representative responsible for the sale.
+        synonyms:
+          - salesperson
+          - account_manager
+          - representative
+          - agent
+      - name: PRODUCT_LINE
+        expr: PRODUCT_LINE
+        data_type: VARCHAR(16777216)
+        sample_values:
+          - Enterprise Suite
+          - Basic Package
+          - Premium Security
+        description: This column categorizes sales by the type of product or service offered, distinguishing between the comprehensive Enterprise Suite, the standard Basic Package, and the advanced Premium Security package.
+        synonyms:
+          - product family
+          - item category
+          - merchandise type
+          - goods classification
+          - commodity group
+    time_dimensions:
+      - name: CLOSE_DATE
+        expr: CLOSE_DATE
+        data_type: DATE
+        sample_values:
+          - '2024-02-15'
+          - '2024-02-01'
+          - '2024-01-30'
+        description: The date on which a sale was closed or finalized.
+        synonyms:
+          - completion date
+          - sale date
+          - deal close date
+          - transaction date
+          - sale completion date
+    measures:
+      - name: DEAL_VALUE
+        expr: DEAL_VALUE
+        data_type: FLOAT
+        sample_values:
+          - '75000'
+          - '25000'
+          - '150000'
+        description: The total monetary value of a sales deal or transaction.
+        synonyms:
+          - revenue
+          - sale_amount
+          - transaction_value
+          - deal_amount
+          - sale_price
+  $$
+);
+
+--8. Create mcp server
+create or replace mcp server tko_ai_production_mcp_server from specification
+$$
+tools:
+  - name: "Support Tickets Search Service"
+    identifier: "tko_ai_production.data.sales_conversation_search"
+    type: "CORTEX_SEARCH_SERVICE_QUERY"
+    description: "A tool that performs keyword and vector search over sales conversations."
+    title: "Sales Conversations"
+
+  - name: "Sales Metrics"
+    identifier: "tko_ai_production.data.sales_metrics_sv"
+    type: "CORTEX_ANALYST_MESSAGE"
+    description: "A tool that performs structured data analysis over sales metrics."
+    title: "Sales Metrics"
+    config:
+        warehouse: "tko_ai_production_wh"
+$$;
+
+-- 9. Open Cussor and set the Snowflake_tko_ai_production as the MCP server
+
+-- add the following to your .cursor/mcp.json.
+--    "Snowflake_tko_ai_production": {
+--        "url": "https://{your_org_name}.{your_account_name}.snowflakecomputing.com/api/v2/databases/tko_ai_production/schemas/data/mcp-servers/tko_ai_production_mcp_server",
+--            "headers": {
+--              "Authorization": "Bearer {your_pat_token}"
+--            }
+--      }
+--}

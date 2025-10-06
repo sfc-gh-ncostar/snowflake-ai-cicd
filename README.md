@@ -1,86 +1,119 @@
 # Getting Started with Cortex Agents
 
-![Alt Text](./agent_demo_video.gif)
-
 ## Overview
-This project utilizes Snowflake Cortex Agents to analyze sales conversations and extract actionable insights. 
-By leveraging semantic search and AI-driven analytics, the platform enables sales teams to gain deeper visibility into 
-customer interactions, sales performance, and deal outcomes.
 
-The core functionalities include:
+This quickstart provisions a Snowflake environment named `tko_ai_production` and demonstrates how to:
 
-- Sales conversation analysis using Snowflake Cortex Search
-- Semantic search over sales data utilizing Cortex Analyst
-- Use Cortex Agents to use both under one API
+- Create a Cortex Search Service over sample sales conversations
+- Create a semantic model (semantic view) for sales metrics
+- Grant a consumer role `tko_ai_production_rl` to use these assets
+- Configure a local MCP server endpoint so tools can query both the search service and the semantic model from Cursor
 
-In this quickstart you will:
-- Create a Cortex Search Service
-- Create a Semantic Model for Cortex Analyst
-- Create a Data Agent that can use Cortex Search and Cortex Analyst
-- Create a streamlit application to chat with the Agent via the API
+Everything is orchestrated through `setup.sql`, which creates all objects, sample data, grants, and the MCP server.
 
-## Step-By-Step Guide
-You can follow this guide here or in the [QuickStart Guide](https://quickstarts.snowflake.com/guide/getting_started_with_cortex_agents/index.html#0)
+## Prerequisites
 
-#### 1. Run setup script
-First, let's get your account setup with some sample data. Run the script in `setup.sql` in a worksheet, with 
-[snowsql](https://docs.snowflake.com/en/user-guide/snowsql), or any other way you prefer.
-If you with to use a pre-existing database, schema, and warehouse, skip the first two steps of the setup script.
+- A Snowflake account with the ability to assume `ACCOUNTADMIN` during setup
+- Snowsight or `snowsql` to run SQL
+- A Programmatic Access Token (PAT) tied to role `tko_ai_production_rl` for MCP access
 
-#### 2. Upload semantic model
-Upload the Semantic Model yaml `sales_metrics_model.yaml`.
+## Step-by-step
 
-In Snowsight:
-- Navigate to Data (Or Catalog » Database Explorer) » Databases » SALES_INTELLIGENCE » DATA » Stages » MODELS
-- Click "+ Files" in the top right
-- Browse and select sales_metrics_model.yaml file
-- Click "Upload"
+### 1) Run the setup script
 
-Or with `snowsql` run: `PUT file://sales_metrics_model.yaml @sales_intelligence.data.models AUTO_COMPRESS=false;`
+Run `setup.sql` in a Snowflake worksheet or via `snowsql`.
 
-#### 3. Create a PAT token to call the Snowflake REST APIs
-In Snowsight:
-- Click on your profile (bottom left corner) » Settings » Authentication
-- Under `Programmatic access tokens`, click `Generate new token`
-- Select `Single Role` and select `sales_intelligence_rl`
-- Copy and save the token for later (you will not be able to see it again)
+- Creates role: `tko_ai_production_rl`
+- Creates database, schemas, and warehouse:
+  - Database: `tko_ai_production`
+  - Schemas: `tko_ai_production.data`, `tko_ai_production.agents`
+  - Warehouse: `tko_ai_production_wh`
+- Seeds tables with sample data:
+  - `data.sales_conversations`
+  - `data.sales_metrics`
+- Enables change tracking and cross-region inference (required for certain models)
+- Creates Cortex Search Service: `data.sales_conversation_search`
+- Creates Stage: `data.models`
+- Creates a semantic view from YAML for sales metrics: `data.sales_metrics_sv`
+- Creates an MCP server: `data.mcp-servers.tko_ai_production_mcp_server`
 
-#### 4. Create the Agent
-Run the following command on your terminal to create an Agent via the REST API, replacing the PAT token and account URL.
-You can find your account URL in Snowsight: Click on your profile (bottom left corner) » Account » View account details.
-```
-curl -X POST https://{ACCOUNT_URL}/api/v2/databases/snowflake_intelligence/schemas/agents/agents \
--H 'Content-Type: application/json' \
--H 'Accept: application/json' \
--H 'Authorization: Bearer {PAT_TOKEN}' \
--d @create_agent.json
+Tip: If you want to use existing database/schema/warehouse, adjust object names in `setup.sql` before running.
+
+### 2) Upload the semantic model (optional)
+
+`setup.sql` already calls `SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML` with an embedded YAML block. If you prefer to upload the YAML file directly:
+
+- In Snowsight: Data » Databases » `tko_ai_production` » `DATA` » Stages » `MODELS` » + Files
+- Or with `snowsql`:
+
+```sql
+PUT file://sales_metrics_model.yaml @tko_ai_production.data.models AUTO_COMPRESS=false;
 ```
 
-Alternatively, you can create the Agent in Snowsight navigating to AI & ML » Agents » Create Agent (see step by step 
-in the [QuickStart Guide](https://quickstarts.snowflake.com/guide/getting_started_with_cortex_agents/index.html?index=..%2F..index#3)).
+### 3) Create a Programmatic Access Token (PAT)
 
-After creating you can chat with the Agent via Snowflake Intelligence.
-In Snowsight, click on AI & ML » Snowflake Intelligence, select the `SALES_INTELLIGENCE_AGENT` in the chat bar, and ask
-any questions you'd like!
+In Snowsight: Profile (bottom-left) » Settings » Authentication » Programmatic access tokens » Generate new token.
 
-#### 5. Run the streamlit
-Now that you have created your agent, run the sample streamlit to interact with it.
-Make sure to populate the PAT and HOST params correctly.
-(Note: this guide was built using Python 3.11)
+- Select Single Role and choose `tko_ai_production_rl`
+- Copy and securely store the token (you cannot view it again)
 
-```
-python3 -m venv venv
-source venv/bin/activate
-pip3 install -r requirements.txt
+### 4) Configure Cursor MCP client
 
-CORTEX_AGENT_DEMO_PAT=<PAT> \
-CORTEX_AGENT_DEMO_HOST=<ACCOUNT_URL> \
-CORTEX_AGENT_DEMO_DATABASE="SNOWFLAKE_INTELLIGENCE" \
-CORTEX_AGENT_DEMO_SCHEMA="AGENTS" \
-CORTEX_AGENT_DEMO_AGENT="SALES_INTELLIGENCE_AGENT" \
-streamlit run data_agent_demo.py
+Add the following entry to your local `.cursor/mcp.json` so Cursor can call Snowflake MCP endpoints with your PAT.
+
+```json
+{
+  "Snowflake_tko_ai_production": {
+    "url": "https://<org>.<account>.snowflakecomputing.com/api/v2/databases/tko_ai_production/schemas/data/mcp-servers/tko_ai_production_mcp_server",
+    "headers": {
+      "Authorization": "Bearer <YOUR_PAT_TOKEN>"
+    }
+  }
+}
 ```
 
-The streamlit uses python code auto-generated using https://openapi-generator.tech/. It creates the pydantic classes in
-`/models` for the request and response objects based on the OpenAPI spec at `cortexagent-run.yaml`. You can regenerate
-those files by running the script `openapi-generator.sh` (assuming you have docker installed and running locally).
+Replace `<org>.<account>` and `<YOUR_PAT_TOKEN>` accordingly.
+
+## Verify your setup
+
+Run these checks in a worksheet after executing `setup.sql`.
+
+### Check sample rows
+
+```sql
+USE ROLE tko_ai_production_rl;
+USE DATABASE tko_ai_production;
+USE SCHEMA data;
+SELECT COUNT(*) FROM sales_conversations;
+SELECT COUNT(*) FROM sales_metrics;
+```
+
+### Test Cortex Search Service
+
+```sql
+SELECT *
+FROM TABLE(CORTEX_SEARCH(
+  'tko_ai_production.data.sales_conversation_search',
+  'security architecture deep dive'
+))
+LIMIT 5;
+```
+
+### Explore the semantic view
+
+```sql
+SELECT * FROM tko_ai_production.data.sales_metrics_sv LIMIT 10;
+```
+
+## Notes
+
+- Cross-region inference is enabled to allow models like `claude-4-sonnet`:
+  - `ALTER ACCOUNT SET CORTEX_ENABLED_CROSS_REGION = 'AWS_US';`
+- Grants are applied so `tko_ai_production_rl` can use the warehouse, search service, stage, and objects.
+- If you change object names, update the MCP server `url` accordingly.
+
+## Repository contents
+
+- `setup.sql`: End-to-end provisioning (roles, DB/SC, WH, tables, data, search service, stage, semantic view, MCP server)
+- `sales_metrics_model.yaml`: Standalone YAML model (optional if using the embedded YAML in `setup.sql`)
+- `README.md`: This guide
