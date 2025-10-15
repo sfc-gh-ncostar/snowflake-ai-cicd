@@ -3,6 +3,7 @@ USE ROLE ACCOUNTADMIN;
 -- Enable cross region inference (required to use claude-4-sonnet)
 ALTER ACCOUNT SET CORTEX_ENABLED_CROSS_REGION = 'AWS_US';
 
+-- Create consumer role
 CREATE ROLE IF NOT EXISTS TECHUP25_RL;
 GRANT DATABASE ROLE SNOWFLAKE.CORTEX_USER TO ROLE TECHUP25_RL;
 SET my_user = CURRENT_USER();
@@ -327,9 +328,7 @@ LIMIT 5;
 
 -- 4. Create the search service
 USE ROLE TECHUP25_RL;
-USE DATABASE TECHUP25;
-USE SCHEMA AGENTIC_AI;
-
+USE SCHEMA TECHUP25.AGENTIC_AI;
 -- Create cortexsearch service
 -- Note: It will take 1-2 minutes to create the search service
 CREATE OR REPLACE CORTEX SEARCH SERVICE QUERY_HISTORY_SEARCH_SERVICE
@@ -495,6 +494,10 @@ SELECT
 FROM QUERY_HISTORY_MATERIALIZED;
 -- [Optional] End of test. **/
 
+-- 4-2. Get Cortex Knowledge Base.
+USE ROLE ACCOUNTADMIN;
+CREATE DATABASE if not exists IDENTIFIER('"SNOWFLAKE_DOCUMENTATION"') FROM LISTING IDENTIFIER('"GZSTZ67BY9OQ4"');
+GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE_DOCUMENTATION TO ROLE TECHUP25_RL;
 
 -- 5. Create Stage for the semantic model.
 USE ROLE ACCOUNTADMIN;
@@ -518,7 +521,6 @@ COPY FILES INTO @TECHUP25.AGENTIC_AI.MODELS
   PATTERN = '.*\\.yaml$';
 
 --6. Create Cortex Agents
-USE ROLE ACCOUNTADMIN;
 USE ROLE TECHUP25_RL;
 USE SCHEMA TECHUP25.AGENTIC_AI;
 CREATE OR REPLACE AGENT TECHUP25.AGENTIC_AI.SNOWFLAKE_HOUSEKEEPING_AGENT
@@ -548,6 +550,13 @@ FROM SPECIFICATION $$
     },
     {
       "tool_spec": {
+        "type": "cortex_search",
+        "name": "cortex_snowflake_documentation",
+        "description": "Allows users to get documentations from Snowflake Documentation."
+      }
+    },
+    {
+      "tool_spec": {
         "type": "cortex_analyst_text_to_sql",
         "name": "cortex_analyst_snowflake_query_history ",
         "description": "This is the Platform Health & Governance Model. It provides a unified business layer over the Snowflake ACCOUNT_USAGE schema, designed for platform owners and administrators. The model is optimized for natural language queries with Cortex Analyst, allowing users to proactively manage the environment by asking questions related to cost efficiency, operational performance, and security governance."
@@ -559,6 +568,11 @@ FROM SPECIFICATION $$
       "id_column": "QUERY_TEXT",
       "max_results": 5,
       "name": "TECHUP25.AGENTIC_AI.QUERY_HISTORY_SEARCH_SERVICE",
+    },
+    "cortex_snowflake_documentation": {
+      "id_column": "CHUNK",
+      "max_results": 5,
+      "name": "SNOWFLAKE_DOCUMENTATION.SHARED.CKE_SNOWFLAKE_DOCS_SERVICE",
     },
     "cortex_analyst_snowflake_query_history": {
       "semantic_model_file": "@TECHUP25.AGENTIC_AI.models/semantic_model.yaml",
@@ -576,24 +590,30 @@ USE ROLE ACCOUNTADMIN;
 USE SCHEMA TECHUP25.AGENTIC_AI;
 CREATE OR REPLACE MCP SERVER SNOWFLAKE_HOUSEKEEPING_MCP_SERVER from specification
 $$
-tools:
-  - name: "Snowflake Housekeeping Cortex Search Service"
-    identifier: "TECHUP25.AGENTIC_AI.SNOWFLAKE_HOUSEKEEPING_AGENT"
-    type: "CORTEX_SEARCH_SERVICE_QUERY"
-    description: "A tool that performs keyword and vector search over Snowflake query history."
-    title: "Snowflake Housekeeping Cortex Search Service"
+  tools:
+    - name: "Snowflake Housekeeping Cortex Search Service"
+      identifier: "TECHUP25.AGENTIC_AI.SNOWFLAKE_HOUSEKEEPING_AGENT"
+      type: "CORTEX_SEARCH_SERVICE_QUERY"
+      description: "A tool that performs keyword and vector search over Snowflake query history."
+      title: "Snowflake Housekeeping Cortex Search Service"
 
-  - name: "Snowflake Housekeeping Cortex Analyst"
-    identifier: "TECHUP25.AGENTIC_AI.MODELS/semantic_model.yaml"
-    type: "CORTEX_ANALYST_MESSAGE"
-    description: "A tool that performs structured data analysis over Snowflake query history."
-    title: "Snowflake Housekeeping Cortex Analyst"
-    config:
-        warehouse: "TECHUP25_wh"
+    - name: "Snowflake Housekeeping Cortex Documentation"
+      identifier: "SNOWFLAKE_DOCUMENTATION.SHARED"
+      type: "CKE_SNOWFLAKE_DOCS_SERVICE"
+      description: "A tool that performs keyword and vector search over Snowflake documentation."
+      title: "Snowflake Housekeeping Cortex Documentation"
+
+    - name: "Snowflake Housekeeping Cortex Analyst"
+      identifier: "TECHUP25.AGENTIC_AI.MODELS/semantic_model.yaml"
+      type: "CORTEX_ANALYST_MESSAGE"
+      description: "A tool that performs structured data analysis over Snowflake query history."
+      title: "Snowflake Housekeeping Cortex Analyst"
+      config:
+          warehouse: "TECHUP25_wh"
 $$;
 GRANT USAGE ON MCP SERVER SNOWFLAKE_HOUSEKEEPING_MCP_SERVER TO ROLE TECHUP25_RL;
 
--- 9. Open Cussor and set the Snowflake_TECHUP25 as the MCP server
+-- 8. Open Cussor and set the Snowflake_TECHUP25 as the MCP server
 
 -- add the following to your .cursor/mcp.json.
 --    "Snowflake_TECHUP25": {
