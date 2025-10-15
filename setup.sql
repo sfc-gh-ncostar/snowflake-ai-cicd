@@ -1,5 +1,8 @@
 -- 1. Create consumer role
 USE ROLE ACCOUNTADMIN;
+-- Enable cross region inference (required to use claude-4-sonnet)
+ALTER ACCOUNT SET CORTEX_ENABLED_CROSS_REGION = 'AWS_US';
+
 CREATE ROLE IF NOT EXISTS TECHUP25_RL;
 GRANT DATABASE ROLE SNOWFLAKE.CORTEX_USER TO ROLE TECHUP25_RL;
 SET my_user = CURRENT_USER();
@@ -8,14 +11,20 @@ GRANT ROLE TECHUP25_RL to user IDENTIFIER($my_user);
 -- 2. Create database, schema, and warehouse
 CREATE DATABASE IF NOT EXISTS TECHUP25;
 CREATE SCHEMA IF NOT EXISTS TECHUP25.AGENTIC_AI;
-GRANT USAGE ON DATABASE TECHUP25 TO ROLE TECHUP25_RL;
-GRANT USAGE ON SCHEMA TECHUP25.AGENTIC_AI TO ROLE TECHUP25_RL;
 
-CREATE DATABASE IF NOT EXISTS TECHUP25;
-CREATE SCHEMA IF NOT EXISTS TECHUP25.AGENTIC_AI;
+-- TECHUP25 Database
 GRANT USAGE ON DATABASE TECHUP25 TO ROLE TECHUP25_RL;
 GRANT USAGE ON SCHEMA TECHUP25.AGENTIC_AI TO ROLE TECHUP25_RL;
+GRANT SELECT ON ALL TABLES IN SCHEMA TECHUP25.AGENTIC_AI TO ROLE TECHUP25_RL;
+GRANT SELECT ON FUTURE TABLES IN SCHEMA TECHUP25.AGENTIC_AI TO ROLE TECHUP25_RL;
+GRANT CREATE TABLE ON SCHEMA TECHUP25.AGENTIC_AI TO ROLE TECHUP25_RL;
+-- Snowflake Database
+GRANT DATABASE ROLE SNOWFLAKE.GOVERNANCE_VIEWER TO ROLE TECHUP25_RL;
+-- Cortex Search Service
+GRANT CREATE CORTEX SEARCH SERVICE ON SCHEMA TECHUP25.AGENTIC_AI TO ROLE TECHUP25_RL;
+-- Cortex Agent 
 GRANT CREATE AGENT ON SCHEMA TECHUP25.AGENTIC_AI TO ROLE TECHUP25_RL;
+-- Warehouse
 CREATE WAREHOUSE IF NOT EXISTS TECHUP25_wh
 WITH 
     WAREHOUSE_SIZE = 'SMALL'
@@ -26,266 +35,569 @@ COMMENT = 'TechUp Warehouse with 1-hour auto-suspend policy';
 GRANT USAGE, OPERATE ON WAREHOUSE TECHUP25_wh TO ROLE TECHUP25_RL;
 
 -- 3. Create tables for sales data
+USE ROLE TECHUP25_RL;
+USE SCHEMA TECHUP25.AGENTIC_AI;
+
+-- Create the physical table structure
+CREATE OR REPLACE TABLE QUERY_HISTORY_MATERIALIZED (
+    -- Core Query Identification
+    QUERY_ID VARCHAR(16777216),
+    QUERY_TEXT STRING,
+    QUERY_TYPE VARCHAR(16777216),
+    QUERY_HASH VARCHAR(16777216),
+    QUERY_PARAMETERIZED_HASH VARCHAR(16777216),
+    QUERY_TAG VARCHAR(16777216),
+    
+    -- User & Security Context
+    USER_NAME VARCHAR(16777216),
+    ROLE_NAME VARCHAR(16777216),
+    USER_TYPE VARCHAR(16777216),
+    
+    -- Infrastructure Context  
+    DATABASE_NAME VARCHAR(16777216),
+    SCHEMA_NAME VARCHAR(16777216),
+    WAREHOUSE_NAME VARCHAR(16777216),
+    WAREHOUSE_SIZE VARCHAR(16777216),
+    WAREHOUSE_TYPE VARCHAR(16777216),
+    
+    -- Execution Context
+    START_TIME TIMESTAMP_LTZ(6),
+    END_TIME TIMESTAMP_LTZ(6),
+    TOTAL_ELAPSED_TIME NUMBER(38,0),
+    EXECUTION_TIME NUMBER(38,0),
+    COMPILATION_TIME NUMBER(38,0),
+    EXECUTION_STATUS VARCHAR(16777216),
+    ERROR_CODE VARCHAR(16777216),
+    ERROR_MESSAGE STRING,
+    
+    -- Performance Metrics
+    BYTES_SCANNED NUMBER(38,0),
+    BYTES_WRITTEN NUMBER(38,0),
+    BYTES_DELETED NUMBER(38,0),
+    ROWS_PRODUCED NUMBER(38,0),
+    ROWS_INSERTED NUMBER(38,0),
+    ROWS_UPDATED NUMBER(38,0),
+    ROWS_DELETED NUMBER(38,0),
+    ROWS_UNLOADED NUMBER(38,0),
+    PERCENTAGE_SCANNED_FROM_CACHE NUMBER(38,3),
+    
+    -- Cost Metrics
+    CREDITS_USED_CLOUD_SERVICES NUMBER(38,9),
+    
+    -- Data Transfer
+    INBOUND_DATA_TRANSFER_BYTES NUMBER(38,0),
+    OUTBOUND_DATA_TRANSFER_BYTES NUMBER(38,0),
+    INBOUND_DATA_TRANSFER_CLOUD VARCHAR(16777216),
+    INBOUND_DATA_TRANSFER_REGION VARCHAR(16777216),
+    OUTBOUND_DATA_TRANSFER_CLOUD VARCHAR(16777216),
+    OUTBOUND_DATA_TRANSFER_REGION VARCHAR(16777216),
+    
+    -- Memory & Spill
+    BYTES_SPILLED_TO_LOCAL_STORAGE NUMBER(38,0),
+    BYTES_SPILLED_TO_REMOTE_STORAGE NUMBER(38,0),
+    BYTES_READ_FROM_RESULT NUMBER(38,0),
+    BYTES_SENT_OVER_THE_NETWORK NUMBER(38,0),
+    BYTES_WRITTEN_TO_RESULT NUMBER(38,0),
+    
+    -- Advanced Metrics
+    PARTITIONS_SCANNED NUMBER(38,0),
+    PARTITIONS_TOTAL NUMBER(38,0),
+    QUERY_LOAD_PERCENT NUMBER(38,3),
+    CLUSTER_NUMBER NUMBER(38,0),
+    
+    -- Queue & Wait Times
+    QUEUED_OVERLOAD_TIME NUMBER(38,0),
+    QUEUED_PROVISIONING_TIME NUMBER(38,0),
+    QUEUED_REPAIR_TIME NUMBER(38,0),
+    CHILD_QUERIES_WAIT_TIME NUMBER(38,0),
+    
+    -- System Context
+    SESSION_ID NUMBER(38,0),
+    TRANSACTION_ID NUMBER(38,0),
+    TRANSACTION_BLOCKED_TIME NUMBER(38,0),
+    RELEASE_VERSION VARCHAR(16777216),
+    
+    -- External Functions
+    EXTERNAL_FUNCTION_TOTAL_INVOCATIONS NUMBER(38,0),
+    EXTERNAL_FUNCTION_TOTAL_SENT_ROWS NUMBER(38,0),
+    EXTERNAL_FUNCTION_TOTAL_RECEIVED_ROWS NUMBER(38,0),
+    EXTERNAL_FUNCTION_TOTAL_SENT_BYTES NUMBER(38,0),
+    EXTERNAL_FUNCTION_TOTAL_RECEIVED_BYTES NUMBER(38,0),
+    
+    -- Additional Context
+    IS_CLIENT_GENERATED_STATEMENT BOOLEAN,
+    QUERY_RETRY_CAUSE VARCHAR(16777216),
+    QUERY_RETRY_TIME NUMBER(38,0),
+    FAULT_HANDLING_TIME NUMBER(38,0),
+    LIST_EXTERNAL_FILES_TIME NUMBER(38,0),
+    
+    -- Search-Optimized Fields
+    SEARCH_METADATA STRING,
+    QUERY_SUMMARY STRING,
+    PERFORMANCE_CATEGORY VARCHAR(50),
+    COST_CATEGORY VARCHAR(50),
+    
+    -- Metadata
+    MATERIALIZED_AT TIMESTAMP_NTZ
+);
+
+-- Populate with 60 days of data
+INSERT INTO QUERY_HISTORY_MATERIALIZED
+SELECT 
+    -- Core Query Identification
+    QUERY_ID,
+    QUERY_TEXT,
+    QUERY_TYPE,
+    QUERY_HASH,
+    QUERY_PARAMETERIZED_HASH,
+    QUERY_TAG,
+    
+    -- User & Security Context
+    USER_NAME,
+    ROLE_NAME,
+    USER_TYPE,
+    
+    -- Infrastructure Context  
+    DATABASE_NAME,
+    SCHEMA_NAME,
+    WAREHOUSE_NAME,
+    WAREHOUSE_SIZE,
+    WAREHOUSE_TYPE,
+    
+    -- Execution Context
+    START_TIME,
+    END_TIME,
+    TOTAL_ELAPSED_TIME,
+    EXECUTION_TIME,
+    COMPILATION_TIME,
+    EXECUTION_STATUS,
+    ERROR_CODE,
+    ERROR_MESSAGE,
+    
+    -- Performance Metrics
+    BYTES_SCANNED,
+    BYTES_WRITTEN,
+    BYTES_DELETED,
+    ROWS_PRODUCED,
+    ROWS_INSERTED,
+    ROWS_UPDATED,
+    ROWS_DELETED,
+    ROWS_UNLOADED,
+    PERCENTAGE_SCANNED_FROM_CACHE,
+    
+    -- Cost Metrics
+    CREDITS_USED_CLOUD_SERVICES,
+    
+    -- Data Transfer
+    INBOUND_DATA_TRANSFER_BYTES,
+    OUTBOUND_DATA_TRANSFER_BYTES,
+    INBOUND_DATA_TRANSFER_CLOUD,
+    INBOUND_DATA_TRANSFER_REGION,
+    OUTBOUND_DATA_TRANSFER_CLOUD,
+    OUTBOUND_DATA_TRANSFER_REGION,
+    
+    -- Memory & Spill
+    BYTES_SPILLED_TO_LOCAL_STORAGE,
+    BYTES_SPILLED_TO_REMOTE_STORAGE,
+    BYTES_READ_FROM_RESULT,
+    BYTES_SENT_OVER_THE_NETWORK,
+    BYTES_WRITTEN_TO_RESULT,
+    
+    -- Advanced Metrics
+    PARTITIONS_SCANNED,
+    PARTITIONS_TOTAL,
+    QUERY_LOAD_PERCENT,
+    CLUSTER_NUMBER,
+    
+    -- Queue & Wait Times
+    QUEUED_OVERLOAD_TIME,
+    QUEUED_PROVISIONING_TIME,
+    QUEUED_REPAIR_TIME,
+    CHILD_QUERIES_WAIT_TIME,
+    
+    -- System Context
+    SESSION_ID,
+    TRANSACTION_ID,
+    TRANSACTION_BLOCKED_TIME,
+    RELEASE_VERSION,
+    
+    -- External Functions
+    EXTERNAL_FUNCTION_TOTAL_INVOCATIONS,
+    EXTERNAL_FUNCTION_TOTAL_SENT_ROWS,
+    EXTERNAL_FUNCTION_TOTAL_RECEIVED_ROWS,
+    EXTERNAL_FUNCTION_TOTAL_SENT_BYTES,
+    EXTERNAL_FUNCTION_TOTAL_RECEIVED_BYTES,
+    
+    -- Additional Context
+    IS_CLIENT_GENERATED_STATEMENT,
+    QUERY_RETRY_CAUSE,
+    QUERY_RETRY_TIME,
+    FAULT_HANDLING_TIME,
+    LIST_EXTERNAL_FILES_TIME,
+    
+    -- Derived Searchable Fields
+    CONCAT_WS(' | ',
+        COALESCE(QUERY_TYPE, 'UNKNOWN'),
+        COALESCE(DATABASE_NAME, 'NO_DB'),
+        COALESCE(SCHEMA_NAME, 'NO_SCHEMA'),
+        COALESCE(USER_NAME, 'NO_USER'),
+        COALESCE(ROLE_NAME, 'NO_ROLE'),
+        COALESCE(WAREHOUSE_NAME, 'NO_WAREHOUSE'),
+        CASE WHEN ERROR_CODE IS NOT NULL THEN 'ERROR' ELSE 'SUCCESS' END,
+        CASE 
+            WHEN TOTAL_ELAPSED_TIME > 300000 THEN 'LONG_RUNNING'
+            WHEN TOTAL_ELAPSED_TIME > 30000 THEN 'MEDIUM_DURATION'
+            ELSE 'QUICK'
+        END,
+        CASE
+            WHEN CREDITS_USED_CLOUD_SERVICES > 0.1 THEN 'HIGH_COST'
+            WHEN CREDITS_USED_CLOUD_SERVICES > 0.01 THEN 'MEDIUM_COST'
+            WHEN CREDITS_USED_CLOUD_SERVICES > 0 THEN 'LOW_COST'
+            ELSE 'MINIMAL_COST'
+        END
+    ) AS SEARCH_METADATA,
+    
+    -- Human-readable query summary
+    CONCAT(
+        'Query Type: ', COALESCE(QUERY_TYPE, 'Unknown'), ' | ',
+        'User: ', COALESCE(USER_NAME, 'Unknown'), ' | ',
+        'Role: ', COALESCE(ROLE_NAME, 'Unknown'), ' | ',
+        'Database: ', COALESCE(DATABASE_NAME, 'None'), ' | ',
+        'Warehouse: ', COALESCE(WAREHOUSE_NAME, 'None'), ' | ',
+        'Duration: ', COALESCE(ROUND(TOTAL_ELAPSED_TIME/1000, 2), 0), ' seconds | ',
+        'Status: ', COALESCE(EXECUTION_STATUS, 'Unknown'), ' | ',
+        'Data Scanned: ', COALESCE(ROUND(BYTES_SCANNED/POWER(1024,3), 2), 0), ' GB | ',
+        'Credits: ', COALESCE(ROUND(CREDITS_USED_CLOUD_SERVICES, 4), 0)
+    ) AS QUERY_SUMMARY,
+    
+    -- Performance categorization
+    CASE 
+        WHEN TOTAL_ELAPSED_TIME > 300000 THEN 'LONG_RUNNING'
+        WHEN TOTAL_ELAPSED_TIME > 30000 THEN 'MEDIUM_DURATION'
+        WHEN TOTAL_ELAPSED_TIME > 5000 THEN 'QUICK'
+        ELSE 'INSTANT'
+    END AS PERFORMANCE_CATEGORY,
+    
+    -- Cost categorization
+    CASE
+        WHEN CREDITS_USED_CLOUD_SERVICES > 1.0 THEN 'VERY_EXPENSIVE'
+        WHEN CREDITS_USED_CLOUD_SERVICES > 0.1 THEN 'EXPENSIVE'
+        WHEN CREDITS_USED_CLOUD_SERVICES > 0.01 THEN 'MODERATE'
+        WHEN CREDITS_USED_CLOUD_SERVICES > 0 THEN 'LOW_COST'
+        ELSE 'FREE'
+    END AS COST_CATEGORY,
+    
+    -- Materialization timestamp
+    CURRENT_TIMESTAMP() AS MATERIALIZED_AT
+
+FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+WHERE START_TIME >= CURRENT_DATE - INTERVAL '14 DAYS'
+  AND START_TIME < CURRENT_DATE  -- Avoid partial current day
+ORDER BY START_TIME DESC
+LIMIT 1000
+;
+
+
+-- [Optional] Verify the materialization
+SELECT 
+    COUNT(*) AS total_queries,
+    MIN(START_TIME) AS earliest_query,
+    MAX(START_TIME) AS latest_query,
+    COUNT(DISTINCT USER_NAME) AS unique_users,
+    COUNT(DISTINCT DATABASE_NAME) AS unique_databases,
+    COUNT(DISTINCT WAREHOUSE_NAME) AS unique_warehouses,
+    ROUND(SUM(CREDITS_USED_CLOUD_SERVICES), 2) AS total_cloud_service_credits,
+FROM QUERY_HISTORY_MATERIALIZED;
+
+-- [Optional] Sample the search fields
+SELECT 
+    QUERY_ID,
+    QUERY_TYPE,
+    USER_NAME,
+    DATABASE_NAME,
+    PERFORMANCE_CATEGORY,
+    COST_CATEGORY,
+    LEFT(SEARCH_METADATA, 100) AS search_metadata_preview,
+    LEFT(QUERY_SUMMARY, 150) AS query_summary_preview,
+    START_TIME
+FROM QUERY_HISTORY_MATERIALIZED 
+ORDER BY START_TIME DESC
+LIMIT 5;
+
+
+-- 4. Create the search service
+USE ROLE TECHUP25_RL;
 USE DATABASE TECHUP25;
 USE SCHEMA AGENTIC_AI;
 
-CREATE TABLE sales_conversations (
-    conversation_id VARCHAR,
-    transcript_text TEXT,
-    customer_name VARCHAR,
-    deal_stage VARCHAR,
-    sales_rep VARCHAR,
-    conversation_date TIMESTAMP,
-    deal_value FLOAT,
-    product_line VARCHAR
-);
-GRANT SELECT ON TABLE sales_conversations TO ROLE TECHUP25_RL;
+-- Create cortexsearch service
+-- Note: It will take 1-2 minutes to create the search service
+CREATE OR REPLACE CORTEX SEARCH SERVICE QUERY_HISTORY_SEARCH_SERVICE
+ON QUERY_TEXT  -- Primary searchable column (SQL text content)
+ATTRIBUTES (
+    -- Core identifiers for filtering and context
+    QUERY_ID,
+    QUERY_TYPE,
+    
+    -- User and security context
+    USER_NAME,
+    ROLE_NAME,
+    USER_TYPE,
+    
+    -- Infrastructure context
+    DATABASE_NAME,
+    SCHEMA_NAME,
+    WAREHOUSE_NAME,
+    WAREHOUSE_SIZE,
+    
+    -- Execution context
+    START_TIME,
+    END_TIME,
+    EXECUTION_STATUS,
+    ERROR_CODE,
+    ERROR_MESSAGE,
+    
+    -- Performance metrics
+    TOTAL_ELAPSED_TIME,
+    BYTES_SCANNED,
+    PERCENTAGE_SCANNED_FROM_CACHE,
+    
+    -- Cost information
+    CREDITS_USED_CLOUD_SERVICES,
+    
+    -- Search-optimized fields
+    SEARCH_METADATA,
+    QUERY_SUMMARY,
+    PERFORMANCE_CATEGORY,
+    COST_CATEGORY,
+    
+    -- Spill indicators (for performance analysis)
+    BYTES_SPILLED_TO_LOCAL_STORAGE,
+    BYTES_SPILLED_TO_REMOTE_STORAGE
+)
+WAREHOUSE = TECHUP25_WH  -- Change this to your preferred warehouse
+TARGET_LAG = '1 HOUR'   -- How often to refresh the search index
+AS
+SELECT 
+    QUERY_TEXT,
+    QUERY_ID,
+    QUERY_TYPE,
+    USER_NAME,
+    ROLE_NAME,
+    USER_TYPE,
+    DATABASE_NAME,
+    SCHEMA_NAME,
+    WAREHOUSE_NAME,
+    WAREHOUSE_SIZE,
+    START_TIME,
+    END_TIME,
+    EXECUTION_STATUS,
+    ERROR_CODE,
+    ERROR_MESSAGE,
+    TOTAL_ELAPSED_TIME,
+    BYTES_SCANNED,
+    PERCENTAGE_SCANNED_FROM_CACHE,
+    CREDITS_USED_CLOUD_SERVICES,
+    SEARCH_METADATA,
+    QUERY_SUMMARY,
+    PERFORMANCE_CATEGORY,
+    COST_CATEGORY,
+    BYTES_SPILLED_TO_LOCAL_STORAGE,
+    BYTES_SPILLED_TO_REMOTE_STORAGE
+FROM QUERY_HISTORY_MATERIALIZED;
 
-CREATE TABLE sales_metrics (
-    deal_id VARCHAR,
-    customer_name VARCHAR,
-    deal_value FLOAT,
-    close_date DATE,
-    sales_stage VARCHAR,
-    win_status BOOLEAN,
-    sales_rep VARCHAR,
-    product_line VARCHAR
-);
-GRANT SELECT ON TABLE sales_metrics TO ROLE TECHUP25_RL;
-
-INSERT INTO sales_conversations 
-(conversation_id, transcript_text, customer_name, deal_stage, sales_rep, conversation_date, deal_value, product_line)
-VALUES
-('CONV001', 'Initial discovery call with TechCorp Inc''s IT Director and Solutions Architect. Client showed strong interest in our enterprise solution features, particularly the automated workflow capabilities. The main discussion centered around integration timeline and complexity. They currently use Legacy System X for their core operations and expressed concerns about potential disruption during migration. The team asked detailed questions about API compatibility and data migration tools.
-
-Action items include providing a detailed integration timeline document, scheduling a technical deep-dive with their infrastructure team, and sharing case studies of similar Legacy System X migrations. The client mentioned a Q2 budget allocation for digital transformation initiatives. Overall, it was a positive engagement with clear next steps.', 'TechCorp Inc', 'Discovery', 'Sarah Johnson', '2024-01-15 10:30:00', 75000, 'Enterprise Suite'),
-
-('CONV002', 'Follow-up call with SmallBiz Solutions'' Operations Manager and Finance Director. The primary focus was on pricing structure and ROI timeline. They compared our Basic Package pricing with Competitor Y''s small business offering. Key discussion points included monthly vs. annual billing options, user license limitations, and potential cost savings from process automation.
-
-The client requested a detailed ROI analysis focusing on time saved in daily operations, resource allocation improvements, and projected efficiency gains. Budget constraints were clearly communicated, with a maximum budget of $30K for this year. They showed interest in starting with the basic package with room for a potential upgrade in Q4. Next steps include providing a competitive analysis and a customized ROI calculator by next week.', 'SmallBiz Solutions', 'Negotiation', 'Mike Chen', '2024-01-16 14:45:00', 25000, 'Basic Package'),
-
-('CONV003', 'Strategy session with SecureBank Ltd''s CISO and Security Operations team. Extremely positive 90-minute deep dive into our Premium Security package. Customer emphasized immediate need for implementation due to recent industry compliance updates. Our advanced security features, especially multi-factor authentication and encryption protocols, were identified as perfect fits for their requirements. Technical team was particularly impressed with our zero-trust architecture approach and real-time threat monitoring capabilities. They''ve already secured budget approval and have executive buy-in. Compliance documentation is ready for review. Action items include: finalizing implementation timeline, scheduling security audit, and preparing necessary documentation for their risk assessment team. Client ready to move forward with contract discussions.', 'SecureBank Ltd', 'Closing', 'Rachel Torres', '2024-01-17 11:20:00', 150000, 'Premium Security'),
-
-('CONV004', 'Comprehensive discovery call with GrowthStart Up''s CTO and Department Heads. Team of 500+ employees across 3 continents discussed current challenges with their existing solution. Major pain points identified: system crashes during peak usage, limited cross-department reporting capabilities, and poor scalability for remote teams. Deep dive into their current workflow revealed bottlenecks in data sharing and collaboration. Technical requirements gathered for each department. Platform demo focused on scalability features and global team management capabilities. Client particularly interested in our API ecosystem and custom reporting engine. Next steps: schedule department-specific workflow analysis and prepare detailed platform migration plan.', 'GrowthStart Up', 'Discovery', 'Sarah Johnson', '2024-01-18 09:15:00', 100000, 'Enterprise Suite'),
-
-('CONV005', 'In-depth demo session with DataDriven Co''s Analytics team and Business Intelligence managers. Showcase focused on advanced analytics capabilities, custom dashboard creation, and real-time data processing features. Team was particularly impressed with our machine learning integration and predictive analytics models. Competitor comparison requested specifically against Market Leader Z and Innovative Start-up X. Price point falls within their allocated budget range, but team expressed interest in multi-year commitment with corresponding discount structure. Technical questions centered around data warehouse integration and custom visualization capabilities. Action items: prepare detailed competitor feature comparison matrix and draft multi-year pricing proposals with various discount scenarios.', 'DataDriven Co', 'Demo', 'James Wilson', '2024-01-19 13:30:00', 85000, 'Analytics Pro'),
-
-('CONV006', 'Extended technical deep dive with HealthTech Solutions'' IT Security team, Compliance Officer, and System Architects. Four-hour session focused on API infrastructure, data security protocols, and compliance requirements. Team raised specific concerns about HIPAA compliance, data encryption standards, and API rate limiting. Detailed discussion of our security architecture, including: end-to-end encryption, audit logging, and disaster recovery protocols. Client requires extensive documentation on compliance certifications, particularly SOC 2 and HITRUST. Security team performed initial architecture review and requested additional information about: database segregation, backup procedures, and incident response protocols. Follow-up session scheduled with their compliance team next week.', 'HealthTech Solutions', 'Technical Review', 'Rachel Torres', '2024-01-20 15:45:00', 120000, 'Premium Security'),
-
-('CONV007', 'Contract review meeting with LegalEase Corp''s General Counsel, Procurement Director, and IT Manager. Detailed analysis of SLA terms, focusing on uptime guarantees and support response times. Legal team requested specific modifications to liability clauses and data handling agreements. Procurement raised questions about payment terms and service credit structure. Key discussion points included: disaster recovery commitments, data retention policies, and exit clause specifications. IT Manager confirmed technical requirements are met pending final security assessment. Agreement reached on most terms, with only SLA modifications remaining for discussion. Legal team to provide revised contract language by end of week. Overall positive session with clear path to closing.', 'LegalEase Corp', 'Negotiation', 'Mike Chen', '2024-01-21 10:00:00', 95000, 'Enterprise Suite'),
-
-('CONV008', 'Quarterly business review with GlobalTrade Inc''s current implementation team and potential expansion stakeholders. Current implementation in Finance department showcasing strong adoption rates and 40% improvement in processing times. Discussion focused on expanding solution to Operations and HR departments. Users highlighted positive experiences with customer support and platform stability. Challenges identified in current usage: need for additional custom reports and increased automation in workflow processes. Expansion requirements gathered from Operations Director: inventory management integration, supplier portal access, and enhanced tracking capabilities. HR team interested in recruitment and onboarding workflow automation. Next steps: prepare department-specific implementation plans and ROI analysis for expansion.', 'GlobalTrade Inc', 'Expansion', 'James Wilson', '2024-01-22 14:20:00', 45000, 'Basic Package'),
-
-('CONV009', 'Emergency planning session with FastTrack Ltd''s Executive team and Project Managers. Critical need for rapid implementation due to current system failure. Team willing to pay premium for expedited deployment and dedicated support team. Detailed discussion of accelerated implementation timeline and resource requirements. Key requirements: minimal disruption to operations, phased data migration, and emergency support protocols. Technical team confident in meeting aggressive timeline with additional resources. Executive sponsor emphasized importance of going live within 30 days. Immediate next steps: finalize expedited implementation plan, assign dedicated support team, and begin emergency onboarding procedures. Team to reconvene daily for progress updates.', 'FastTrack Ltd', 'Closing', 'Sarah Johnson', '2024-01-23 16:30:00', 180000, 'Premium Security'),
-
-('CONV010', 'Quarterly strategic review with UpgradeNow Corp''s Department Heads and Analytics team. Current implementation meeting basic needs but team requiring more sophisticated analytics capabilities. Deep dive into current usage patterns revealed opportunities for workflow optimization and advanced reporting needs. Users expressed strong satisfaction with platform stability and basic features, but requiring enhanced data visualization and predictive analytics capabilities. Analytics team presented specific requirements: custom dashboard creation, advanced data modeling tools, and integrated BI features. Discussion about upgrade path from current package to Analytics Pro tier. ROI analysis presented showing potential 60% improvement in reporting efficiency. Team to present upgrade proposal to executive committee next month.', 'UpgradeNow Corp', 'Expansion', 'Rachel Torres', '2024-01-24 11:45:00', 65000, 'Analytics Pro');
-
-INSERT INTO sales_metrics
-(deal_id, customer_name, deal_value, close_date, sales_stage, win_status, sales_rep, product_line)
-VALUES
-('DEAL001', 'TechCorp Inc', 75000, '2024-02-15', 'Closed', true, 'Sarah Johnson', 'Enterprise Suite'),
-
-('DEAL002', 'SmallBiz Solutions', 25000, '2024-02-01', 'Lost', false, 'Mike Chen', 'Basic Package'),
-
-('DEAL003', 'SecureBank Ltd', 150000, '2024-01-30', 'Closed', true, 'Rachel Torres', 'Premium Security'),
-
-('DEAL004', 'GrowthStart Up', 100000, '2024-02-10', 'Pending', false, 'Sarah Johnson', 'Enterprise Suite'),
-
-('DEAL005', 'DataDriven Co', 85000, '2024-02-05', 'Closed', true, 'James Wilson', 'Analytics Pro'),
-
-('DEAL006', 'HealthTech Solutions', 120000, '2024-02-20', 'Pending', false, 'Rachel Torres', 'Premium Security'),
-
-('DEAL007', 'LegalEase Corp', 95000, '2024-01-25', 'Closed', true, 'Mike Chen', 'Enterprise Suite'),
-
-('DEAL008', 'GlobalTrade Inc', 45000, '2024-02-08', 'Closed', true, 'James Wilson', 'Basic Package'),
-
-('DEAL009', 'FastTrack Ltd', 180000, '2024-02-12', 'Closed', true, 'Sarah Johnson', 'Premium Security'),
-
-('DEAL010', 'UpgradeNow Corp', 65000, '2024-02-18', 'Pending', false, 'Rachel Torres', 'Analytics Pro');
-
-ALTER TABLE sales_conversations SET CHANGE_TRACKING = TRUE;
-
--- 4. Create the search service
-CREATE OR REPLACE CORTEX SEARCH SERVICE sales_conversation_search
-  ON transcript_text
-  ATTRIBUTES customer_name, deal_stage, sales_rep, product_line, conversation_date, deal_value
-  WAREHOUSE = TECHUP25_wh
-  TARGET_LAG = '1 hour'
-  AS (
-    SELECT
-        conversation_id,
-        transcript_text,
-        customer_name,
-        deal_stage,
-        sales_rep,
-        conversation_date,
-        deal_value,
-        product_line
-    FROM sales_conversations
-);
-GRANT USAGE ON CORTEX SEARCH SERVICE sales_conversation_search TO ROLE TECHUP25_RL;
-
--- 5. Create Stage
--- CREATE OR REPLACE STAGE models DIRECTORY = (ENABLE = TRUE);
-GRANT READ ON STAGE models TO ROLE TECHUP25_RL;
-
--- 6. Enable cross region inference (required to use claude-4-sonnet)
-ALTER ACCOUNT SET CORTEX_ENABLED_CROSS_REGION = 'AWS_US';
-
---7. Upload the semantic model
--- PUT file://sales_metrics_model.yaml @TECHUP25.AGENTIC_AI.models AUTO_COMPRESS=false;
-CALL SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML(
-  'TECHUP25.AGENTIC_AI',
-  $$
-name: sales_metrics_sv
-description: Sales metrics and analytics model
-tables:
-  - name: SALES_METRICS
-    base_table:
-      database: SALES_INTELLIGENCE
-      schema: DATA
-      table: SALES_METRICS
-    dimensions:
-      - name: DEAL_ID
-        expr: DEAL_ID
-        data_type: VARCHAR(16777216)
-        sample_values:
-          - DEAL001
-          - DEAL002
-          - DEAL003
-        description: Unique identifier for a sales deal, used to track and analyze individual sales agreements.
-        synonyms:
-          - Transaction ID
-          - Agreement ID
-          - Contract ID
-          - Sale ID
-          - Order ID
-          - Deal Number
-      - name: CUSTOMER_NAME
-        expr: CUSTOMER_NAME
-        data_type: VARCHAR(16777216)
-        sample_values:
-          - TechCorp Inc
-          - SmallBiz Solutions
-          - SecureBank Ltd
-        description: The name of the customer associated with a particular sale or transaction.
-        synonyms:
-          - client
-          - buyer
-          - purchaser
-          - account_name
-          - account_holder
-      - name: SALES_STAGE
-        expr: SALES_STAGE
-        data_type: VARCHAR(16777216)
-        sample_values:
-          - Closed
-          - Lost
-          - Pending
-        description: The current stage of a sales opportunity, indicating whether it has been successfully closed, lost to a competitor, or is still pending a decision.
-        synonyms:
-          - deal_status
-          - sales_phase
-          - opportunity_state
-          - pipeline_position
-      - name: WIN_STATUS
-        expr: WIN_STATUS
-        data_type: BOOLEAN
-        sample_values:
-          - 'TRUE'
-          - 'FALSE'
-        description: Indicates whether a sale was won (TRUE) or lost (FALSE).
-        synonyms:
-          - won
-          - success
-          - closed
-          - converted
-          - achieved
-          - accomplished
-      - name: SALES_REP
-        expr: SALES_REP
-        data_type: VARCHAR(16777216)
-        sample_values:
-          - Sarah Johnson
-          - Mike Chen
-          - Rachel Torres
-        description: The sales representative responsible for the sale.
-        synonyms:
-          - salesperson
-          - account_manager
-          - representative
-          - agent
-      - name: PRODUCT_LINE
-        expr: PRODUCT_LINE
-        data_type: VARCHAR(16777216)
-        sample_values:
-          - Enterprise Suite
-          - Basic Package
-          - Premium Security
-        description: This column categorizes sales by the type of product or service offered, distinguishing between the comprehensive Enterprise Suite, the standard Basic Package, and the advanced Premium Security package.
-        synonyms:
-          - product family
-          - item category
-          - merchandise type
-          - goods classification
-          - commodity group
-    time_dimensions:
-      - name: CLOSE_DATE
-        expr: CLOSE_DATE
-        data_type: DATE
-        sample_values:
-          - '2024-02-15'
-          - '2024-02-01'
-          - '2024-01-30'
-        description: The date on which a sale was closed or finalized.
-        synonyms:
-          - completion date
-          - sale date
-          - deal close date
-          - transaction date
-          - sale completion date
-    measures:
-      - name: DEAL_VALUE
-        expr: DEAL_VALUE
-        data_type: FLOAT
-        sample_values:
-          - '75000'
-          - '25000'
-          - '150000'
-        description: The total monetary value of a sales deal or transaction.
-        synonyms:
-          - revenue
-          - sale_amount
-          - transaction_value
-          - deal_amount
-          - sale_price
-  $$
+-- /** [Optional] Start of test. 
+-- Note: Wait a few minutes after creation for indexing to complete
+-- Test the search service with sample queries
+-- Test 1: Find queries by SQL pattern
+SELECT 'TEST 1: Find SELECT queries on SALES database' AS test_description;
+SELECT SNOWFLAKE.CORTEX.SEARCH_PREVIEW(
+    'TECHUP25.AGENTIC_AI.QUERY_HISTORY_SEARCH_SERVICE',
+    '{
+        "query": "SELECT FROM sales database table",
+        "columns": ["QUERY_ID", "USER_NAME", "QUERY_SUMMARY", "QUERY_TEXT"],
+        "limit": 3
+    }'
 );
 
---8. Create mcp server
-create or replace mcp server TECHUP25_mcp_server from specification
+-- Test 2: Find expensive queries
+SELECT 'TEST 2: Find expensive or long-running queries' AS test_description;
+SELECT SNOWFLAKE.CORTEX.SEARCH_PREVIEW(
+    'TECHUP25.AGENTIC_AI.QUERY_HISTORY_SEARCH_SERVICE',
+    '{
+        "query": "expensive long running high cost query optimization",
+        "columns": ["QUERY_ID", "USER_NAME", "COST_CATEGORY", "PERFORMANCE_CATEGORY", "QUERY_SUMMARY"],
+        "limit": 3
+    }'
+);
+
+-- Test 3: Find queries with errors
+SELECT 'TEST 3: Find failed queries with error messages' AS test_description;
+SELECT SNOWFLAKE.CORTEX.SEARCH_PREVIEW(
+    'TECHUP25.AGENTIC_AI.QUERY_HISTORY_SEARCH_SERVICE',
+    '{
+        "query": "error failed compilation timeout",
+        "columns": ["QUERY_ID", "USER_NAME", "ERROR_CODE", "ERROR_MESSAGE", "QUERY_SUMMARY"],
+        "limit": 3
+    }'
+);
+
+-- Test 4: Find queries by specific user or role patterns
+SELECT 'TEST 4: Find queries by data engineering roles' AS test_description;
+SELECT SNOWFLAKE.CORTEX.SEARCH_PREVIEW(
+    'TECHUP25.AGENTIC_AI.QUERY_HISTORY_SEARCH_SERVICE',
+    '{
+        "query": "data engineer ETL transformation pipeline",
+        "columns": ["USER_NAME", "ROLE_NAME", "DATABASE_NAME", "QUERY_TYPE", "QUERY_SUMMARY"],
+        "limit": 3
+    }'
+);
+
+-- Test 5: Find queries with performance issues
+SELECT 'TEST 5: Find queries that spilled to disk' AS test_description;
+SELECT SNOWFLAKE.CORTEX.SEARCH_PREVIEW(
+    'TECHUP25.AGENTIC_AI.QUERY_HISTORY_SEARCH_SERVICE',
+    '{
+        "query": "memory spill disk storage performance optimization",
+        "columns": ["QUERY_ID", "USER_NAME", "BYTES_SPILLED_TO_LOCAL_STORAGE", "BYTES_SPILLED_TO_REMOTE_STORAGE", "QUERY_SUMMARY"],
+        "limit": 3
+    }'
+);
+
+-- Advanced search examples with filters
+SELECT 'ADVANCED: Find recent expensive queries by specific users' AS test_description;
+SELECT SNOWFLAKE.CORTEX.SEARCH_PREVIEW(
+    'TECHUP25.AGENTIC_AI.QUERY_HISTORY_SEARCH_SERVICE',
+    '{
+        "query": "expensive query optimization performance tuning",
+        "columns": ["QUERY_ID", "USER_NAME", "COST_CATEGORY", "QUERY_SUMMARY", "START_TIME"],
+        "limit": 5
+    }'
+);
+
+-- Utility: Check search service status and statistics
+SELECT 'SEARCH SERVICE STATUS' AS info;
+SHOW CORTEX SEARCH SERVICES LIKE 'TECHUP25.AGENTIC_AI.QUERY_HISTORY_SEARCH_SERVICE';
+
+-- Utility: Get search service information
+SELECT 
+    'SEARCH SERVICE INFO' AS category,
+    COUNT(*) AS indexed_records
+FROM QUERY_HISTORY_MATERIALIZED;
+
+SELECT 
+    'RECENT DATA AVAILABILITY' AS category,
+    MIN(START_TIME) AS earliest_query,
+    MAX(START_TIME) AS latest_query,
+    COUNT(DISTINCT USER_NAME) AS unique_users,
+    COUNT(DISTINCT DATABASE_NAME) AS unique_databases,
+    COUNT(DISTINCT QUERY_TYPE) AS unique_query_types
+FROM QUERY_HISTORY_MATERIALIZED;
+-- [Optional] End of test. **/
+
+
+-- 5. Create Stage for the semantic model.
+USE ROLE ACCOUNTADMIN;
+USE SCHEMA TECHUP25.AGENTIC_AI;
+CREATE OR REPLACE STAGE MODELS DIRECTORY = (ENABLE = TRUE);
+GRANT WRITE, READ ON STAGE MODELS TO ROLE TECHUP25_RL;
+
+-- Create API Integration and Git Repository
+CREATE OR REPLACE API INTEGRATION TKO25_AGENTIC_AI_GIT_API_INTEGRATION
+  API_PROVIDER = git_https_api
+  API_ALLOWED_PREFIXES = ('https://github.com/mrecos/')
+  ENABLED = TRUE;
+
+CREATE OR REPLACE GIT REPOSITORY TKO25_AGENTIC_AI_GIT_INTEGRATION
+  API_INTEGRATION = TKO25_AGENTIC_AI_GIT_API_INTEGRATION
+  ORIGIN = 'https://github.com/mrecos/Snowflake.git/';
+
+-- Copy the semantic model.yaml file to the models stage
+COPY FILES INTO @TECHUP25.AGENTIC_AI.MODELS
+  FROM '@TKO25_AGENTIC_AI_GIT_INTEGRATION/branches/main/Snowflake Housekeeping Agent/semantic_model.yaml'
+  PATTERN = '.*\\.yaml$';
+
+--6. Create Cortex Agents
+USE ROLE ACCOUNTADMIN;
+USE ROLE TECHUP25_RL;
+USE SCHEMA TECHUP25.AGENTIC_AI;
+CREATE OR REPLACE AGENT TECHUP25.AGENTIC_AI.SNOWFLAKE_HOUSEKEEPING_AGENT
+WITH PROFILE='{ "display_name": "Snowflake Housekeeping Agent" }'
+    COMMENT=$$ This is an agent that can answer questions about Snowflake platform monitoring, cost optimization, and governance questions. $$
+FROM SPECIFICATION $$
+{
+  "models": {
+    "orchestration": ""
+  },
+  "instructions": {
+    "response": "You are a data analyst who has access to Snowflake usage and cost.",
+    "orchestration": "Use cortex search for known entities and pass the results to cortex analyst for detailed analysis.",
+    "sample_questions": [
+      {
+        "question": "expensive query optimization performance tuning"
+      }
+    ]
+  },
+  "tools": [
+    {
+      "tool_spec": {
+        "type": "cortex_search",
+        "name": "cortex_search_snowflake_query_history",
+        "description": "Allows users to query Snowflake query history."
+      }
+    },
+    {
+      "tool_spec": {
+        "type": "cortex_analyst_text_to_sql",
+        "name": "cortex_analyst_snowflake_query_history ",
+        "description": "This is the Platform Health & Governance Model. It provides a unified business layer over the Snowflake ACCOUNT_USAGE schema, designed for platform owners and administrators. The model is optimized for natural language queries with Cortex Analyst, allowing users to proactively manage the environment by asking questions related to cost efficiency, operational performance, and security governance."
+      }
+    }
+  ],
+  "tool_resources": {
+    "cortex_search_snowflake_query_history": {
+      "id_column": "QUERY_TEXT",
+      "max_results": 5,
+      "name": "TECHUP25.AGENTIC_AI.QUERY_HISTORY_SEARCH_SERVICE",
+    },
+    "cortex_analyst_snowflake_query_history": {
+      "semantic_model_file": "@TECHUP25.AGENTIC_AI.models/semantic_model.yaml",
+      "execution_environment": {
+        "type": "warehouse",
+        "warehouse": "TECHUP25_wh"
+      }
+    }
+  }
+}
+$$;
+
+--7. Create MCP Server
+USE ROLE ACCOUNTADMIN;
+USE SCHEMA TECHUP25.AGENTIC_AI;
+CREATE OR REPLACE MCP SERVER SNOWFLAKE_HOUSEKEEPING_MCP_SERVER from specification
 $$
 tools:
-  - name: "Support Tickets Search Service"
-    identifier: "TECHUP25.AGENTIC_AI.sales_conversation_search"
+  - name: "Snowflake Housekeeping Cortex Search Service"
+    identifier: "TECHUP25.AGENTIC_AI.SNOWFLAKE_HOUSEKEEPING_AGENT"
     type: "CORTEX_SEARCH_SERVICE_QUERY"
-    description: "A tool that performs keyword and vector search over sales conversations."
-    title: "Sales Conversations"
+    description: "A tool that performs keyword and vector search over Snowflake query history."
+    title: "Snowflake Housekeeping Cortex Search Service"
 
-  - name: "Sales Metrics"
-    identifier: "TECHUP25.AGENTIC_AI.sales_metrics_sv"
+  - name: "Snowflake Housekeeping Cortex Analyst"
+    identifier: "TECHUP25.AGENTIC_AI.MODELS/semantic_model.yaml"
     type: "CORTEX_ANALYST_MESSAGE"
-    description: "A tool that performs structured data analysis over sales metrics."
-    title: "Sales Metrics"
+    description: "A tool that performs structured data analysis over Snowflake query history."
+    title: "Snowflake Housekeeping Cortex Analyst"
     config:
         warehouse: "TECHUP25_wh"
 $$;
+GRANT USAGE ON MCP SERVER SNOWFLAKE_HOUSEKEEPING_MCP_SERVER TO ROLE TECHUP25_RL;
 
 -- 9. Open Cussor and set the Snowflake_TECHUP25 as the MCP server
 
 -- add the following to your .cursor/mcp.json.
 --    "Snowflake_TECHUP25": {
---        "url": "https://{your_org_name}.{your_account_name}.snowflakecomputing.com/api/v2/databases/TECHUP25/schemas/data/mcp-servers/TECHUP25_mcp_server",
+--        "url": "https://{your_org_name}.{your_account_name}.snowflakecomputing.com/api/v2/databases/TECHUP25/schemas/AGENTIC_AI/mcp-servers/SNOWFLAKE_HOUSEKEEPING_MCP_SERVER",
 --            "headers": {
 --              "Authorization": "Bearer {your_pat_token}"
 --            }
