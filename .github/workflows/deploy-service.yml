@@ -55,11 +55,19 @@ jobs:
           done
           
           # Get unique components, convert to a JSON array, and set as output
-          unique_components=$(echo "${components[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' ')
-          json_array=$(echo "$unique_components" | jq -R 'split(" ") | .[0:-1]' | jq -c .)
+          if [ ${#components[@]} -eq 0 ]; then
+            json_array="[]"
+          else
+            unique_components=$(printf '%s\n' "${components[@]}" | sort -u | tr '\n' ' ')
+            json_array=$(echo "$unique_components" | jq -R 'split(" ") | map(select(. != ""))' | jq -c .)
+          fi
           
           # Convert files array to JSON
-          files_json=$(printf '%s\n' "${files[@]}" | jq -R . | jq -s .)
+          if [ ${#files[@]} -eq 0 ]; then
+            files_json="[]"
+          else
+            files_json=$(printf '%s\n' "${files[@]}" | jq -R . | jq -s .)
+          fi
           
           echo "Components to deploy: $json_array"
           echo "Files changed: $files_json"
