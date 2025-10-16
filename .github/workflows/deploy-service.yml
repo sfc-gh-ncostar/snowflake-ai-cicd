@@ -1,0 +1,192 @@
+name: Deploy Service to Environments
+
+on:
+  push:
+    branches:
+      - main # Triggers on merge/push to the main branch
+  workflow_dispatch: # Allows manual triggering
+
+jobs:
+  # Job 1: Detect which components have changed based on file paths
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      # This output will be a JSON array string like '["component-a", "component-b"]'
+      components: ${{ steps.set-matrix.outputs.components }}
+      # This output will be a JSON array string of changed files
+      files: ${{ steps.set-matrix.outputs.files }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Fetch depth 0 to get all history for accurate change detection
+          fetch-depth: 0
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v44
+
+      - name: Determine which components to deploy
+        id: set-matrix
+        shell: bash
+        run: |
+          # This script maps changed file paths to component names.
+          # Add your own logic here.
+          # For example, if a file in 'services/api/' changes, we deploy 'api'.
+          
+          components=()
+          files=()
+          
+          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+            if [[ "$file" == components/cortex_agent/** ]]; then
+              components+=("cortex_agent")
+              files+=("$file")
+            elif [[ "$file" == components/cortex_search/** ]]; then
+              components+=("cortex_search")
+              files+=("$file")
+            elif [[ "$file" == components/mcp_server/** ]]; then
+              components+=("mcp_server")
+              files+=("$file")
+            elif [[ "$file" == components/semantic_view/** ]]; then
+              components+=("semantic_view")
+              files+=("$file")
+            fi
+          done
+          
+          # Get unique components, convert to a JSON array, and set as output
+          unique_components=$(echo "${components[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' ')
+          json_array=$(echo "$unique_components" | jq -R 'split(" ") | .[0:-1]' | jq -c .)
+          
+          # Convert files array to JSON
+          files_json=$(printf '%s\n' "${files[@]}" | jq -R . | jq -s .)
+          
+          echo "Components to deploy: $json_array"
+          echo "Files changed: $files_json"
+          echo "components=$json_array" >> $GITHUB_OUTPUT
+          echo "files=$files_json" >> $GITHUB_OUTPUT
+
+  # Job 2: Deploy all changed components to the Development environment
+  deploy-dev:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.components != '[]' # Only run if there are changes
+    runs-on: ubuntu-latest
+    environment: development # Associate this job with the 'development' environment
+    strategy:
+      matrix:
+        # Create a parallel job for each component identified in the 'detect-changes' job
+        component: ${{ fromJson(needs.detect-changes.outputs.components) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup
+        run: |
+          pip install snowflake-cli-labs
+          sudo apt-get update && sudo apt-get install -y bc
+          pip install jq
+
+      - name: Deploy ${{ matrix.component }} to Development
+        shell: bash
+        run: |
+          echo "Deploying ${{ matrix.component }} to Development..."
+          
+          # Get files for this specific component
+          component_files=$(echo '${{ fromJson(needs.detect-changes.outputs.files) }}' | jq -r --arg component "${{ matrix.component }}" '
+            map(select(. | contains("components/" + $component + "/"))) | .[]
+          ')
+          
+          echo "Files for ${{ matrix.component }}:"
+          echo "$component_files"
+          
+          # Iterate over files for this component
+          echo "$component_files" | while read -r file; do
+            if [ -n "$file" ]; then
+              echo "Processing file: $file"
+              # Add your component-specific deployment logic here
+              # For example: your-cli deploy --component ${{ matrix.component }} --file "$file" --env development --token ${{ secrets.YOUR_SERVICE_TOKEN }}
+            fi
+          done
+
+  # Job 3: Deploy all changed components to the Staging environment
+  deploy-staging:
+    needs: deploy-dev # This job runs only after 'deploy-dev' succeeds
+    if: needs.detect-changes.outputs.components != '[]'
+    runs-on: ubuntu-latest
+    environment: staging
+    strategy:
+      matrix:
+        component: ${{ fromJson(needs.detect-changes.outputs.components) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup
+        run: |
+          pip install snowflake-cli-labs
+          sudo apt-get update && sudo apt-get install -y bc
+          pip install jq
+
+      - name: Deploy ${{ matrix.component }} to Staging
+        shell: bash
+        run: |
+          echo "Deploying ${{ matrix.component }} to Staging..."
+          
+          # Get files for this specific component
+          component_files=$(echo '${{ fromJson(needs.detect-changes.outputs.files) }}' | jq -r --arg component "${{ matrix.component }}" '
+            map(select(. | contains("components/" + $component + "/"))) | .[]
+          ')
+          
+          echo "Files for ${{ matrix.component }}:"
+          echo "$component_files"
+          
+          # Iterate over files for this component
+          echo "$component_files" | while read -r file; do
+            if [ -n "$file" ]; then
+              echo "Processing file: $file"
+              # Add your component-specific deployment logic here
+              # For example: your-cli deploy --component ${{ matrix.component }} --file "$file" --env staging --token ${{ secrets.YOUR_SERVICE_TOKEN }}
+            fi
+          done
+
+  # Job 4: Deploy all changed components to Production with a manual approval gate
+  deploy-prod:
+    needs: deploy-staging # This job runs only after 'deploy-staging' succeeds
+    if: needs.detect-changes.outputs.components != '[]'
+    runs-on: ubuntu-latest
+    environment: 
+      name: production # This environment will have a protection rule
+      url: https://your-app-url.com # Optional: set a URL for the environment
+    strategy:
+      matrix:
+        component: ${{ fromJson(needs.detect-changes.outputs.components) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup
+        run: |
+          pip install snowflake-cli-labs
+          sudo apt-get update && sudo apt-get install -y bc
+          pip install jq
+
+      - name: Deploy ${{ matrix.component }} to Production
+        shell: bash
+        run: |
+          echo "Deploying ${{ matrix.component }} to Production..."
+          
+          # Get files for this specific component
+          component_files=$(echo '${{ fromJson(needs.detect-changes.outputs.files) }}' | jq -r --arg component "${{ matrix.component }}" '
+            map(select(. | contains("components/" + $component + "/"))) | .[]
+          ')
+          
+          echo "Files for ${{ matrix.component }}:"
+          echo "$component_files"
+          
+          # Iterate over files for this component
+          echo "$component_files" | while read -r file; do
+            if [ -n "$file" ]; then
+              echo "Processing file: $file"
+              # Add your component-specific deployment logic here
+              # For example: your-cli deploy --component ${{ matrix.component }} --file "$file" --env production --token ${{ secrets.YOUR_SERVICE_TOKEN }}
+            fi
+          done
