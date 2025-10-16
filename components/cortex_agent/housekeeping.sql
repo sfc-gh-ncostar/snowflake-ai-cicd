@@ -1,4 +1,7 @@
-CREATE OR REPLACE AGENT TECHUP25.AGENTIC_AI.SNOWFLAKE_HOUSEKEEPING_AGENT
+USE ROLE TECHUP25_RL;
+SET env = '<%env%>';
+set name = CONCAT('TECHUP25.AGENTIC_AI.', $env, '_SNOWFLAKE_HOUSEKEEPING_AGENT');
+CREATE OR REPLACE AGENT identifier($name)
 WITH PROFILE='{ "display_name": "Snowflake Housekeeping Agent" }'
     COMMENT=$$ This is an agent that can answer questions about Snowflake platform monitoring, cost optimization, and governance questions. $$
 FROM SPECIFICATION $$
@@ -7,7 +10,7 @@ FROM SPECIFICATION $$
     "orchestration": ""
   },
   "instructions": {
-    "response": "Yfou are a data analyst who has access to Snowflake usage and cost.",
+    "response": "You are a data analyst who has access to Snowflake usage and cost.",
     "orchestration": "Use cortex search for known entities and pass the results to cortex analyst for detailed analysis.",
     "sample_questions": [
       {

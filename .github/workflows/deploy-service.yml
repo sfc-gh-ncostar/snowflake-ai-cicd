@@ -135,11 +135,11 @@ jobs:
           done
 
   # Job 3: Deploy all changed components to the Staging environment
-  deploy-staging:
+  deploy-test:
     needs: deploy-dev # This job runs only after 'deploy-dev' succeeds
     if: needs.detect-changes.outputs.components != '[]'
     runs-on: ubuntu-latest
-    environment: staging
+    environment: test
     strategy:
       matrix:
         component: ${{ fromJson(needs.detect-changes.outputs.components) }}
@@ -152,13 +152,23 @@ jobs:
           pip install snowflake-cli-labs
           sudo apt-get update && sudo apt-get install -y bc jq
 
-      - name: Deploy ${{ matrix.component }} to Staging
+      - name: Deploy ${{ matrix.component }} to Development
         shell: bash
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_WAREHOUSE: TECHUP25_WH
+          SNOWFLAKE_DATABASE: TECHUP25
+          SNOWFLAKE_SCHEMA: AGENTIC_AI
+          SNOWFLAKE_ROLE: TECHUP25_RL
         run: |
-          echo "Deploying ${{ matrix.component }} to Staging..."
-          
+          echo "Deploying ${{ matrix.component }} to Development..."
+          snow connection test --temporary-connection
           # Get files for this specific component
           files_json='${{ needs.detect-changes.outputs.files }}'
+
+          echo "Files for ${{ matrix.component }}: $files_json"
           if [ "$files_json" = "null" ] || [ -z "$files_json" ] || [ "$files_json" = "[]" ]; then
             component_files=""
           else
@@ -173,20 +183,21 @@ jobs:
           # Iterate over files for this component
           echo "$component_files" | while read -r file; do
             if [ -n "$file" ]; then
-              echo "Processing file: $file"
-              # Add your component-specific deployment logic here
-              # For example: your-cli deploy --component ${{ matrix.component }} --file "$file" --env staging --token ${{ secrets.YOUR_SERVICE_TOKEN }}
+              echo "Running file: $file"
+              snow sql --temporary-connection -f "$file" \
+                --variable env="TEST" >> results.txt
+              if grep -q "Error" results.txt; then
+                echo "❌ Deployment failed"; cat results.txt; exit 1
+              fi
             fi
           done
 
   # Job 4: Deploy all changed components to Production with a manual approval gate
   deploy-prod:
-    needs: deploy-staging # This job runs only after 'deploy-staging' succeeds
+    needs: deploy-test # This job runs only after 'deploy-test' succeeds
     if: needs.detect-changes.outputs.components != '[]'
     runs-on: ubuntu-latest
-    environment: 
-      name: production # This environment will have a protection rule
-      url: https://your-app-url.com # Optional: set a URL for the environment
+    environment: production # This environment will have a protection rule
     strategy:
       matrix:
         component: ${{ fromJson(needs.detect-changes.outputs.components) }}
@@ -199,13 +210,23 @@ jobs:
           pip install snowflake-cli-labs
           sudo apt-get update && sudo apt-get install -y bc jq
 
-      - name: Deploy ${{ matrix.component }} to Production
+      - name: Deploy ${{ matrix.component }} to Development
         shell: bash
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_WAREHOUSE: TECHUP25_WH
+          SNOWFLAKE_DATABASE: TECHUP25
+          SNOWFLAKE_SCHEMA: AGENTIC_AI
+          SNOWFLAKE_ROLE: TECHUP25_RL
         run: |
-          echo "Deploying ${{ matrix.component }} to Production..."
-          
+          echo "Deploying ${{ matrix.component }} to Development..."
+          snow connection test --temporary-connection
           # Get files for this specific component
           files_json='${{ needs.detect-changes.outputs.files }}'
+
+          echo "Files for ${{ matrix.component }}: $files_json"
           if [ "$files_json" = "null" ] || [ -z "$files_json" ] || [ "$files_json" = "[]" ]; then
             component_files=""
           else
@@ -220,8 +241,11 @@ jobs:
           # Iterate over files for this component
           echo "$component_files" | while read -r file; do
             if [ -n "$file" ]; then
-              echo "Processing file: $file"
-              # Add your component-specific deployment logic here
-              # For example: your-cli deploy --component ${{ matrix.component }} --file "$file" --env production --token ${{ secrets.YOUR_SERVICE_TOKEN }}
+              echo "Running file: $file"
+              snow sql --temporary-connection -f "$file" \
+                --variable env="PROD" >> results.txt
+              if grep -q "Error" results.txt; then
+                echo "❌ Deployment failed"; cat results.txt; exit 1
+              fi
             fi
           done

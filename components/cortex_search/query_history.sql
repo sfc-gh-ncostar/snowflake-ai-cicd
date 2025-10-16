@@ -8,7 +8,7 @@ ATTRIBUTES (
     -- Core identifiers for filtering and context
     QUERY_ID,
     QUERY_TYPE,
-    
+     
     -- User and security context
     USER_NAME,
     ROLE_NAME,
