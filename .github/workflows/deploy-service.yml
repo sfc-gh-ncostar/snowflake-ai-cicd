@@ -58,15 +58,16 @@ jobs:
           if [ ${#components[@]} -eq 0 ]; then
             json_array="[]"
           else
-            unique_components=$(printf '%s\n' "${components[@]}" | sort -u | tr '\n' ' ')
-            json_array=$(echo "$unique_components" | jq -R 'split(" ") | map(select(. != ""))' | jq -c .)
+            printf '%s\n' "${components[@]}" | sort -u | jq -R . | jq -s . > /tmp/components.json
+            json_array=$(cat /tmp/components.json)
           fi
           
           # Convert files array to JSON
           if [ ${#files[@]} -eq 0 ]; then
             files_json="[]"
           else
-            files_json=$(printf '%s\n' "${files[@]}" | jq -R . | jq -s .)
+            printf '%s\n' "${files[@]}" | jq -R . | jq -s . > /tmp/files.json
+            files_json=$(cat /tmp/files.json)
           fi
           
           echo "Components to deploy: $json_array"

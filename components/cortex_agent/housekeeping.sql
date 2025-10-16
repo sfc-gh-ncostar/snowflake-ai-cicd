@@ -7,7 +7,7 @@ FROM SPECIFICATION $$
     "orchestration": ""
   },
   "instructions": {
-    "response": "You are a data analyst who has access to Snowflake usage and cost.",
+    "response": "Yabou are a data analyst who has access to Snowflake usage and cost.",
     "orchestration": "Use cortex search for known entities and pass the results to cortex analyst for detailed analysis.",
     "sample_questions": [
       {
