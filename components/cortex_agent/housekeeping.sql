@@ -1,6 +1,6 @@
 USE ROLE TECHUP25_RL;
 SET env = '<%env%>';
-set name = CONCAT('TECHUP25.AGENTIC_AI.', $env, '_SNOWFLAKE_HOUSEKEEPING_AGENT');
+set name = CONCAT('TECHUP25.', $env ,'_AGENTIC_AI.','SNOWFLAKE_HOUSEKEEPING_AGENT');
 CREATE OR REPLACE AGENT identifier($name)
 WITH PROFILE='{ "display_name": "Snowflake Housekeeping Agent" }'
     COMMENT=$$ This is an agent that can answer questions about Snowflake platform monitoring, cost optimization, and governance questions. $$

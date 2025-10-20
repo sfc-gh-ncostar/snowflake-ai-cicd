@@ -1,6 +1,6 @@
 USE ROLE TECHUP25_RL;
 SET env = '<%env%>';
-set name = CONCAT('TECHUP25.AGENTIC_AI.', $env, '_HOUSEKEEPING_MCP_SERVER');
+set name = CONCAT('TECHUP25.', $env ,'_AGENTIC_AI.','_HOUSEKEEPING_MCP_SERVER');
 CREATE OR REPLACE MCP SERVER identifier($name) from specification
 $$
   tools:

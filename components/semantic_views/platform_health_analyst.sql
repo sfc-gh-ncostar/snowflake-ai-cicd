@@ -1,6 +1,6 @@
 USE ROLE TECHUP25_RL;
--- SET env = 'DEV';
--- set name = CONCAT('TECHUP25.AGENTIC_AI.', $env, '_QUERY_HISTORY_SEARCH_SERVICE');
+SET env = '<%env%>';
+set name = CONCAT('TECHUP25.', $env ,'_AGENTIC_AI.','_QUERY_HISTORY_SEARCH_SERVICE');
 
 -- CREATE OR REPLACE CORTEX SEARCH SERVICE identifier($name);
 
