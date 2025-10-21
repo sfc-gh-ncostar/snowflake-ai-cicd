@@ -124,10 +124,7 @@ jobs:
             if [ -n "$file" ]; then
               echo "Running file: $file"
               snow sql --temporary-connection -f "$file" \
-                --variable ENV="DEV_" --enable-templating JINJA >> results.txt
-              if grep -q "Error" results.txt; then
-                echo "❌ Deployment failed"; cat results.txt; exit 1
-              fi
+                --variable ENV="DEV_" --enable-templating JINJA
             fi
           done
       - name: Evaluate Component ${{ matrix.component }}
@@ -186,10 +183,7 @@ jobs:
             if [ -n "$file" ]; then
               echo "Running file: $file"
               snow sql --temporary-connection -f "$file" \
-                --variable ENV="TEST_" --enable-templating JINJA >> results.txt
-              if grep -q "Error" results.txt; then
-                echo "❌ Deployment failed"; cat results.txt; exit 1
-              fi
+                --variable ENV="TEST_" --enable-templating JINJA
             fi
           done
       - name: Evaluate Component ${{ matrix.component }}
@@ -247,10 +241,7 @@ jobs:
             if [ -n "$file" ]; then
               echo "Running file: $file"
               snow sql --temporary-connection -f "$file" \
-                --variable ENV="PROD_" --enable-templating JINJA >> results.txt
-              if grep -q "Error" results.txt; then
-                echo "❌ Deployment failed"; cat results.txt; exit 1
-              fi
+                --variable ENV="PROD_" --enable-templating JINJA
             fi
           done
       - name: Evaluate Component ${{ matrix.component }}
