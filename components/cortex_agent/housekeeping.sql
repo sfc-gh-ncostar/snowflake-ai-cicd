@@ -1,8 +1,6 @@
 --!jinja
 USE ROLE TECHUP25_RL;
-set name = CONCAT('TECHUP25.{{ENV}}AGENTIC_AI.','SNOWFLAKE_HOUSEKEEPING_AGENT');
-
-CREATE OR REPLACE AGENT identifier($name)
+CREATE OR REPLACE AGENT identifier('TECHUP25.{{ENV}}AGENTIC_AI.','SNOWFLAKE_HOUSEKEEPING_AGENT')
 WITH PROFILE='{ "display_name": "{{ENV}}Snowflake Housekeeping Agent" }'
     COMMENT=$$ This is an agent that can answer questions about Snowflake platform monitoring, cost optimization, and governance questions. $$
 FROM SPECIFICATION $$

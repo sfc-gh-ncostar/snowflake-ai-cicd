@@ -1,8 +1,6 @@
+--!jinja
 USE ROLE TECHUP25_RL;
-SET env = '<%env%>';
-set name = CONCAT('TECHUP25.', $env ,'AGENTIC_AI.','QUERY_HISTORY_SEARCH_SERVICE');
-
-CREATE OR REPLACE CORTEX SEARCH SERVICE identifier($name)
+CREATE OR REPLACE CORTEX SEARCH SERVICE identifier('TECHUP25.{{ENV}}AGENTIC_AI.','QUERY_HISTORY_SEARCH_SERVICE')
 ON QUERY_TEXT  -- Primary searchable column (SQL text content)
 ATTRIBUTES (
     -- Core identifiers for filtering and context
