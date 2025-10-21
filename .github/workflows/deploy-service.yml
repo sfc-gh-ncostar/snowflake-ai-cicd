@@ -241,7 +241,7 @@ jobs:
             if [ -n "$file" ]; then
               echo "Running file: $file"
               snow sql --temporary-connection -f "$file" \
-                --variable ENV="PROD_" --enable-templating JINJA
+                --variable ENV="" --enable-templating JINJA
             fi
           done
       - name: Evaluate Component ${{ matrix.component }}
