@@ -124,7 +124,7 @@ jobs:
             if [ -n "$file" ]; then
               echo "Running file: $file"
               snow sql --temporary-connection -f "$file" \
-                --variable env="DEV" >> results.txt
+                --variable env="DEV_" >> results.txt
               if grep -q "Error" results.txt; then
                 echo "❌ Deployment failed"; cat results.txt; exit 1
               fi
@@ -186,7 +186,7 @@ jobs:
             if [ -n "$file" ]; then
               echo "Running file: $file"
               snow sql --temporary-connection -f "$file" \
-                --variable env="TEST" >> results.txt
+                --variable env="TEST_" >> results.txt
               if grep -q "Error" results.txt; then
                 echo "❌ Deployment failed"; cat results.txt; exit 1
               fi
@@ -247,7 +247,7 @@ jobs:
             if [ -n "$file" ]; then
               echo "Running file: $file"
               snow sql --temporary-connection -f "$file" \
-                --variable env="PROD" >> results.txt
+                --variable env="PROD_" >> results.txt
               if grep -q "Error" results.txt; then
                 echo "❌ Deployment failed"; cat results.txt; exit 1
               fi
