@@ -9,19 +9,21 @@ GRANT DATABASE ROLE SNOWFLAKE.CORTEX_USER TO ROLE TECHUP25_RL;
 SET my_user = CURRENT_USER();
 GRANT ROLE TECHUP25_RL to user IDENTIFIER($my_user);
 CREATE OR REPLACE USER GH_ACTION_USER TYPE = SERVICE;
-CREATE AUTHENTICATION POLICY PAT_ALLOW
-  PAT_POLICY=(
-    NETWORK_POLICY_EVALUATION = NOT_ENFORCED
-  );
-ALTER USER GH_ACTION_USER SET AUTHENTICATION POLICY PAT_ALLOW;
+
 GRANT ROLE TECHUP25_RL TO USER GH_ACTION_USER;
 -- 2. Create database, schema, and warehouse
 CREATE DATABASE IF NOT EXISTS TECHUP25;
 CREATE SCHEMA IF NOT EXISTS TECHUP25.AGENTIC_AI;
 grant all on schema techup25.agentic_ai to role techup25_rl;
 
+CREATE AUTHENTICATION POLICY IF NOT EXISTS PAT_ALLOW
+  PAT_POLICY=(
+    NETWORK_POLICY_EVALUATION = NOT_ENFORCED
+  );
+ALTER USER GH_ACTION_USER SET AUTHENTICATION POLICY PAT_ALLOW;
+
 -- TECHUP25 Database
-GRANT USAGE ON DATABASE TECHUP25 TO ROLE TECHUP25_RL;
+GRANT ALL ON DATABASE TECHUP25 TO ROLE TECHUP25_RL;
 GRANT USAGE ON SCHEMA TECHUP25.AGENTIC_AI TO ROLE TECHUP25_RL;
 GRANT SELECT ON ALL TABLES IN SCHEMA TECHUP25.AGENTIC_AI TO ROLE TECHUP25_RL;
 GRANT SELECT ON FUTURE TABLES IN SCHEMA TECHUP25.AGENTIC_AI TO ROLE TECHUP25_RL;
@@ -506,16 +508,13 @@ FROM QUERY_HISTORY_MATERIALIZED;
 
 -- 4-2. Get Cortex Knowledge Base.
 USE ROLE ACCOUNTADMIN;
+-- If the below fails to run, you may need to accept marketplace terms before proceeding
 CREATE DATABASE if not exists IDENTIFIER('"SNOWFLAKE_DOCUMENTATION"') FROM LISTING IDENTIFIER('"GZSTZ67BY9OQ4"');
 GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE_DOCUMENTATION TO ROLE TECHUP25_RL;
 
--- 5. Create Stage for the semantic model.
+-- 5. Create the semantic view.
 USE ROLE ACCOUNTADMIN;
 USE SCHEMA TECHUP25.AGENTIC_AI;
-CREATE OR REPLACE STAGE MODELS DIRECTORY = (ENABLE = TRUE);
-GRANT WRITE, READ ON STAGE MODELS TO ROLE TECHUP25_RL;
-
--- Create API Integration and Git Repository
 CALL SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML(
   'TECHUP25.AGENTIC_AI', 
 $$
@@ -6861,32 +6860,30 @@ FROM SPECIFICATION $$
 $$;
 
 --7. Create MCP Server
-USE ROLE ACCOUNTADMIN;
-USE SCHEMA TECHUP25.AGENTIC_AI;
-CREATE OR REPLACE MCP SERVER SNOWFLAKE_HOUSEKEEPING_MCP_SERVER from specification
+USE ROLE TECHUP25_RL;
+CREATE OR REPLACE MCP SERVER TECHUP25.AGENTIC_AI.HOUSEKEEPING_MCP_SERVER FROM SPECIFICATION
 $$
-  tools:
-    - name: "Snowflake Housekeeping Cortex Search Service"
-      identifier: "TECHUP25.AGENTIC_AI.SNOWFLAKE_HOUSEKEEPING_AGENT"
-      type: "CORTEX_SEARCH_SERVICE_QUERY"
-      description: "A tool that performs keyword and vector search over Snowflake query history."
-      title: "Snowflake Housekeeping Cortex Search Service"
+tools:
+  - name: "Snowflake Housekeeping Cortex Search Service"
+    identifier: "TECHUP25.{{ENV}}AGENTIC_AI.QUERY_HISTORY_SEARCH_SERVICE"
+    type: "CORTEX_SEARCH_SERVICE_QUERY"
+    description: "A tool that performs keyword and vector search over Snowflake query history."
+    title: "Snowflake Housekeeping Cortex Search Service"
 
-    - name: "Snowflake Housekeeping Cortex Documentation"
-      identifier: "SNOWFLAKE_DOCUMENTATION.SHARED"
-      type: "CKE_SNOWFLAKE_DOCS_SERVICE"
-      description: "A tool that performs keyword and vector search over Snowflake documentation."
-      title: "Snowflake Housekeeping Cortex Documentation"
-
-    - name: "Snowflake Housekeeping Cortex Analyst"
-      identifier: "TECHUP25.AGENTIC_AI.MODELS/semantic_model.yaml"
-      type: "CORTEX_ANALYST_MESSAGE"
-      description: "A tool that performs structured data analysis over Snowflake query history."
-      title: "Snowflake Housekeeping Cortex Analyst"
-      config:
-          warehouse: "TECHUP25_wh"
+  - name: "Snowflake Housekeeping Cortex Documentation"
+    identifier: "SNOWFLAKE_DOCUMENTATION.SHARED.CKE_SNOWFLAKE_DOCS_SERVICE"
+    type: "CORTEX_SEARCH_SERVICE_QUERY"
+    description: "A tool that performs keyword and vector search over Snowflake documentation."
+    title: "Snowflake Housekeeping Cortex Documentation"
+    
+  - name: "snowflake_account_usage"
+    type: "CORTEX_ANALYST_MESSAGE"
+    identifier: "TECHUP25.AGENTIC_AI.SNOWFLAKE_HOUSEKEEPING_AGENT"
+    description: "This tool allows users to query the Snowflake account usage schema. It provides a unified business layer over the Snowflake ACCOUNT_USAGE schema, designed for platform owners and administrators. The model is optimized for natural language queries with Cortex Analyst, allowing users to proactively manage the environment by asking questions related to cost efficiency, operational performance, and security governance."
+    title: "Semantic view for Snowflake Account Usage"
 $$;
-GRANT USAGE ON MCP SERVER SNOWFLAKE_HOUSEKEEPING_MCP_SERVER TO ROLE TECHUP25_RL;
+
+-- GRANT USAGE ON MCP SERVER TECHUP25.AGENTIC_AI.SNOWFLAKE_HOUSEKEEPING_MCP_SERVER TO ROLE TECHUP25_RL;
 
 -- 8. Open Cussor and set the Snowflake_TECHUP25 as the MCP server
 
@@ -6903,3 +6900,12 @@ grant role techup25_rl to role accountadmin;
 
 ALTER USER GH_ACTION_USER ADD PROGRAMMATIC ACCESS TOKEN GH_ACTION_PAT
 ROLE_RESTRICTION = 'TECHUP25_RL';
+
+
+-- 9. Cleanup Script
+-- Run this section to remove all resources created above
+-- USE ROLE ACCOUNTADMIN;
+-- DROP USER IF EXISTS GH_ACTION_USER;
+-- DROP AUTHENTICATION POLICY TECHUP25.AGENTIC_AI.PAT_ALLOW;
+-- DROP DATABASE IF EXISTS TECHUP25;
+-- DROP ROLE IF EXISTS TECHUP25_RL;
