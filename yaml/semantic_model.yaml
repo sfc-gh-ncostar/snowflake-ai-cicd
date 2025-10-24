@@ -1,524 +1,4 @@
--- 1. Create consumer role
-USE ROLE ACCOUNTADMIN;
--- Enable cross region inference (required to use claude-4-sonnet)
-ALTER ACCOUNT SET CORTEX_ENABLED_CROSS_REGION = 'AWS_US';
--- Create consumer role
-CREATE ROLE IF NOT EXISTS TECHUP25_RL;
-GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE TO ROLE techup25_rl;
-GRANT DATABASE ROLE SNOWFLAKE.CORTEX_USER TO ROLE TECHUP25_RL;
-SET my_user = CURRENT_USER();
-GRANT ROLE TECHUP25_RL to user IDENTIFIER($my_user);
-CREATE OR REPLACE USER GH_ACTION_USER TYPE = SERVICE;
-
-GRANT ROLE TECHUP25_RL TO USER GH_ACTION_USER;
--- 2. Create database, schema, and warehouse
-CREATE DATABASE IF NOT EXISTS TECHUP25;
-CREATE SCHEMA IF NOT EXISTS TECHUP25.AGENTIC_AI;
-grant all on schema techup25.agentic_ai to role techup25_rl;
-
-CREATE AUTHENTICATION POLICY IF NOT EXISTS PAT_ALLOW
-  PAT_POLICY=(
-    NETWORK_POLICY_EVALUATION = NOT_ENFORCED
-  );
-ALTER USER GH_ACTION_USER SET AUTHENTICATION POLICY PAT_ALLOW;
-
--- TECHUP25 Database
-GRANT ALL ON DATABASE TECHUP25 TO ROLE TECHUP25_RL;
-GRANT USAGE ON SCHEMA TECHUP25.AGENTIC_AI TO ROLE TECHUP25_RL;
-GRANT SELECT ON ALL TABLES IN SCHEMA TECHUP25.AGENTIC_AI TO ROLE TECHUP25_RL;
-GRANT SELECT ON FUTURE TABLES IN SCHEMA TECHUP25.AGENTIC_AI TO ROLE TECHUP25_RL;
-GRANT CREATE TABLE ON SCHEMA TECHUP25.AGENTIC_AI TO ROLE TECHUP25_RL;
--- Snowflake Database
-GRANT DATABASE ROLE SNOWFLAKE.GOVERNANCE_VIEWER TO ROLE TECHUP25_RL;
--- Cortex Search Service
-GRANT CREATE CORTEX SEARCH SERVICE ON SCHEMA TECHUP25.AGENTIC_AI TO ROLE TECHUP25_RL;
--- Cortex Agent 
-GRANT CREATE AGENT ON SCHEMA TECHUP25.AGENTIC_AI TO ROLE TECHUP25_RL;
--- Warehouse
-CREATE WAREHOUSE IF NOT EXISTS TECHUP25_WH
-WITH 
-    WAREHOUSE_SIZE = 'SMALL'
-    AUTO_SUSPEND = 3600
-    AUTO_RESUME = TRUE
-    INITIALLY_SUSPENDED = FALSE
-COMMENT = 'TechUp Warehouse with 1-hour auto-suspend policy';
-GRANT USAGE, OPERATE ON WAREHOUSE TECHUP25_wh TO ROLE TECHUP25_RL;
-
--- 3. Create tables for sales data
-USE ROLE TECHUP25_RL;
-CREATE SCHEMA IF NOT EXISTS TECHUP25.DEV_AGENTIC_AI;
-CREATE SCHEMA IF NOT EXISTS TECHUP25.TEST_AGENTIC_AI;
-CREATE SCHEMA IF NOT EXISTS TECHUP25.PROD_AGENTIC_AI;
-USE SCHEMA TECHUP25.AGENTIC_AI;
-
--- Create the physical table structure
-CREATE OR REPLACE TABLE QUERY_HISTORY_MATERIALIZED (
-    -- Core Query Identification
-    QUERY_ID VARCHAR(16777216),
-    QUERY_TEXT STRING,
-    QUERY_TYPE VARCHAR(16777216),
-    QUERY_HASH VARCHAR(16777216),
-    QUERY_PARAMETERIZED_HASH VARCHAR(16777216),
-    QUERY_TAG VARCHAR(16777216),
-    
-    -- User & Security Context
-    USER_NAME VARCHAR(16777216),
-    ROLE_NAME VARCHAR(16777216),
-    USER_TYPE VARCHAR(16777216),
-    
-    -- Infrastructure Context  
-    DATABASE_NAME VARCHAR(16777216),
-    SCHEMA_NAME VARCHAR(16777216),
-    WAREHOUSE_NAME VARCHAR(16777216),
-    WAREHOUSE_SIZE VARCHAR(16777216),
-    WAREHOUSE_TYPE VARCHAR(16777216),
-    
-    -- Execution Context
-    START_TIME TIMESTAMP_LTZ(6),
-    END_TIME TIMESTAMP_LTZ(6),
-    TOTAL_ELAPSED_TIME NUMBER(38,0),
-    EXECUTION_TIME NUMBER(38,0),
-    COMPILATION_TIME NUMBER(38,0),
-    EXECUTION_STATUS VARCHAR(16777216),
-    ERROR_CODE VARCHAR(16777216),
-    ERROR_MESSAGE STRING,
-    
-    -- Performance Metrics
-    BYTES_SCANNED NUMBER(38,0),
-    BYTES_WRITTEN NUMBER(38,0),
-    BYTES_DELETED NUMBER(38,0),
-    ROWS_PRODUCED NUMBER(38,0),
-    ROWS_INSERTED NUMBER(38,0),
-    ROWS_UPDATED NUMBER(38,0),
-    ROWS_DELETED NUMBER(38,0),
-    ROWS_UNLOADED NUMBER(38,0),
-    PERCENTAGE_SCANNED_FROM_CACHE NUMBER(38,3),
-    
-    -- Cost Metrics
-    CREDITS_USED_CLOUD_SERVICES NUMBER(38,9),
-    
-    -- Data Transfer
-    INBOUND_DATA_TRANSFER_BYTES NUMBER(38,0),
-    OUTBOUND_DATA_TRANSFER_BYTES NUMBER(38,0),
-    INBOUND_DATA_TRANSFER_CLOUD VARCHAR(16777216),
-    INBOUND_DATA_TRANSFER_REGION VARCHAR(16777216),
-    OUTBOUND_DATA_TRANSFER_CLOUD VARCHAR(16777216),
-    OUTBOUND_DATA_TRANSFER_REGION VARCHAR(16777216),
-    
-    -- Memory & Spill
-    BYTES_SPILLED_TO_LOCAL_STORAGE NUMBER(38,0),
-    BYTES_SPILLED_TO_REMOTE_STORAGE NUMBER(38,0),
-    BYTES_READ_FROM_RESULT NUMBER(38,0),
-    BYTES_SENT_OVER_THE_NETWORK NUMBER(38,0),
-    BYTES_WRITTEN_TO_RESULT NUMBER(38,0),
-    
-    -- Advanced Metrics
-    PARTITIONS_SCANNED NUMBER(38,0),
-    PARTITIONS_TOTAL NUMBER(38,0),
-    QUERY_LOAD_PERCENT NUMBER(38,3),
-    CLUSTER_NUMBER NUMBER(38,0),
-    
-    -- Queue & Wait Times
-    QUEUED_OVERLOAD_TIME NUMBER(38,0),
-    QUEUED_PROVISIONING_TIME NUMBER(38,0),
-    QUEUED_REPAIR_TIME NUMBER(38,0),
-    CHILD_QUERIES_WAIT_TIME NUMBER(38,0),
-    
-    -- System Context
-    SESSION_ID NUMBER(38,0),
-    TRANSACTION_ID NUMBER(38,0),
-    TRANSACTION_BLOCKED_TIME NUMBER(38,0),
-    RELEASE_VERSION VARCHAR(16777216),
-    
-    -- External Functions
-    EXTERNAL_FUNCTION_TOTAL_INVOCATIONS NUMBER(38,0),
-    EXTERNAL_FUNCTION_TOTAL_SENT_ROWS NUMBER(38,0),
-    EXTERNAL_FUNCTION_TOTAL_RECEIVED_ROWS NUMBER(38,0),
-    EXTERNAL_FUNCTION_TOTAL_SENT_BYTES NUMBER(38,0),
-    EXTERNAL_FUNCTION_TOTAL_RECEIVED_BYTES NUMBER(38,0),
-    
-    -- Additional Context
-    IS_CLIENT_GENERATED_STATEMENT BOOLEAN,
-    QUERY_RETRY_CAUSE VARCHAR(16777216),
-    QUERY_RETRY_TIME NUMBER(38,0),
-    FAULT_HANDLING_TIME NUMBER(38,0),
-    LIST_EXTERNAL_FILES_TIME NUMBER(38,0),
-    
-    -- Search-Optimized Fields
-    SEARCH_METADATA STRING,
-    QUERY_SUMMARY STRING,
-    PERFORMANCE_CATEGORY VARCHAR(50),
-    COST_CATEGORY VARCHAR(50),
-    
-    -- Metadata
-    MATERIALIZED_AT TIMESTAMP_NTZ
-);
-
--- Populate with 60 days of data
-INSERT INTO QUERY_HISTORY_MATERIALIZED
-SELECT 
-    -- Core Query Identification
-    QUERY_ID,
-    QUERY_TEXT,
-    QUERY_TYPE,
-    QUERY_HASH,
-    QUERY_PARAMETERIZED_HASH,
-    QUERY_TAG,
-    
-    -- User & Security Context
-    USER_NAME,
-    ROLE_NAME,
-    USER_TYPE,
-    
-    -- Infrastructure Context  
-    DATABASE_NAME,
-    SCHEMA_NAME,
-    WAREHOUSE_NAME,
-    WAREHOUSE_SIZE,
-    WAREHOUSE_TYPE,
-    
-    -- Execution Context
-    START_TIME,
-    END_TIME,
-    TOTAL_ELAPSED_TIME,
-    EXECUTION_TIME,
-    COMPILATION_TIME,
-    EXECUTION_STATUS,
-    ERROR_CODE,
-    ERROR_MESSAGE,
-    
-    -- Performance Metrics
-    BYTES_SCANNED,
-    BYTES_WRITTEN,
-    BYTES_DELETED,
-    ROWS_PRODUCED,
-    ROWS_INSERTED,
-    ROWS_UPDATED,
-    ROWS_DELETED,
-    ROWS_UNLOADED,
-    PERCENTAGE_SCANNED_FROM_CACHE,
-    
-    -- Cost Metrics
-    CREDITS_USED_CLOUD_SERVICES,
-    
-    -- Data Transfer
-    INBOUND_DATA_TRANSFER_BYTES,
-    OUTBOUND_DATA_TRANSFER_BYTES,
-    INBOUND_DATA_TRANSFER_CLOUD,
-    INBOUND_DATA_TRANSFER_REGION,
-    OUTBOUND_DATA_TRANSFER_CLOUD,
-    OUTBOUND_DATA_TRANSFER_REGION,
-    
-    -- Memory & Spill
-    BYTES_SPILLED_TO_LOCAL_STORAGE,
-    BYTES_SPILLED_TO_REMOTE_STORAGE,
-    BYTES_READ_FROM_RESULT,
-    BYTES_SENT_OVER_THE_NETWORK,
-    BYTES_WRITTEN_TO_RESULT,
-    
-    -- Advanced Metrics
-    PARTITIONS_SCANNED,
-    PARTITIONS_TOTAL,
-    QUERY_LOAD_PERCENT,
-    CLUSTER_NUMBER,
-    
-    -- Queue & Wait Times
-    QUEUED_OVERLOAD_TIME,
-    QUEUED_PROVISIONING_TIME,
-    QUEUED_REPAIR_TIME,
-    CHILD_QUERIES_WAIT_TIME,
-    
-    -- System Context
-    SESSION_ID,
-    TRANSACTION_ID,
-    TRANSACTION_BLOCKED_TIME,
-    RELEASE_VERSION,
-    
-    -- External Functions
-    EXTERNAL_FUNCTION_TOTAL_INVOCATIONS,
-    EXTERNAL_FUNCTION_TOTAL_SENT_ROWS,
-    EXTERNAL_FUNCTION_TOTAL_RECEIVED_ROWS,
-    EXTERNAL_FUNCTION_TOTAL_SENT_BYTES,
-    EXTERNAL_FUNCTION_TOTAL_RECEIVED_BYTES,
-    
-    -- Additional Context
-    IS_CLIENT_GENERATED_STATEMENT,
-    QUERY_RETRY_CAUSE,
-    QUERY_RETRY_TIME,
-    FAULT_HANDLING_TIME,
-    LIST_EXTERNAL_FILES_TIME,
-    
-    -- Derived Searchable Fields
-    CONCAT_WS(' | ',
-        COALESCE(QUERY_TYPE, 'UNKNOWN'),
-        COALESCE(DATABASE_NAME, 'NO_DB'),
-        COALESCE(SCHEMA_NAME, 'NO_SCHEMA'),
-        COALESCE(USER_NAME, 'NO_USER'),
-        COALESCE(ROLE_NAME, 'NO_ROLE'),
-        COALESCE(WAREHOUSE_NAME, 'NO_WAREHOUSE'),
-        CASE WHEN ERROR_CODE IS NOT NULL THEN 'ERROR' ELSE 'SUCCESS' END,
-        CASE 
-            WHEN TOTAL_ELAPSED_TIME > 300000 THEN 'LONG_RUNNING'
-            WHEN TOTAL_ELAPSED_TIME > 30000 THEN 'MEDIUM_DURATION'
-            ELSE 'QUICK'
-        END,
-        CASE
-            WHEN CREDITS_USED_CLOUD_SERVICES > 0.1 THEN 'HIGH_COST'
-            WHEN CREDITS_USED_CLOUD_SERVICES > 0.01 THEN 'MEDIUM_COST'
-            WHEN CREDITS_USED_CLOUD_SERVICES > 0 THEN 'LOW_COST'
-            ELSE 'MINIMAL_COST'
-        END
-    ) AS SEARCH_METADATA,
-    
-    -- Human-readable query summary
-    CONCAT(
-        'Query Type: ', COALESCE(QUERY_TYPE, 'Unknown'), ' | ',
-        'User: ', COALESCE(USER_NAME, 'Unknown'), ' | ',
-        'Role: ', COALESCE(ROLE_NAME, 'Unknown'), ' | ',
-        'Database: ', COALESCE(DATABASE_NAME, 'None'), ' | ',
-        'Warehouse: ', COALESCE(WAREHOUSE_NAME, 'None'), ' | ',
-        'Duration: ', COALESCE(ROUND(TOTAL_ELAPSED_TIME/1000, 2), 0), ' seconds | ',
-        'Status: ', COALESCE(EXECUTION_STATUS, 'Unknown'), ' | ',
-        'Data Scanned: ', COALESCE(ROUND(BYTES_SCANNED/POWER(1024,3), 2), 0), ' GB | ',
-        'Credits: ', COALESCE(ROUND(CREDITS_USED_CLOUD_SERVICES, 4), 0)
-    ) AS QUERY_SUMMARY,
-    
-    -- Performance categorization
-    CASE 
-        WHEN TOTAL_ELAPSED_TIME > 300000 THEN 'LONG_RUNNING'
-        WHEN TOTAL_ELAPSED_TIME > 30000 THEN 'MEDIUM_DURATION'
-        WHEN TOTAL_ELAPSED_TIME > 5000 THEN 'QUICK'
-        ELSE 'INSTANT'
-    END AS PERFORMANCE_CATEGORY,
-    
-    -- Cost categorization
-    CASE
-        WHEN CREDITS_USED_CLOUD_SERVICES > 1.0 THEN 'VERY_EXPENSIVE'
-        WHEN CREDITS_USED_CLOUD_SERVICES > 0.1 THEN 'EXPENSIVE'
-        WHEN CREDITS_USED_CLOUD_SERVICES > 0.01 THEN 'MODERATE'
-        WHEN CREDITS_USED_CLOUD_SERVICES > 0 THEN 'LOW_COST'
-        ELSE 'FREE'
-    END AS COST_CATEGORY,
-    
-    -- Materialization timestamp
-    CURRENT_TIMESTAMP() AS MATERIALIZED_AT
-
-FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
-WHERE START_TIME >= CURRENT_DATE - INTERVAL '14 DAYS'
-  AND START_TIME < CURRENT_DATE  -- Avoid partial current day
-ORDER BY START_TIME DESC
-LIMIT 1000
-;
-
-
--- [Optional] Verify the materialization
-SELECT 
-    COUNT(*) AS total_queries,
-    MIN(START_TIME) AS earliest_query,
-    MAX(START_TIME) AS latest_query,
-    COUNT(DISTINCT USER_NAME) AS unique_users,
-    COUNT(DISTINCT DATABASE_NAME) AS unique_databases,
-    COUNT(DISTINCT WAREHOUSE_NAME) AS unique_warehouses,
-    ROUND(SUM(CREDITS_USED_CLOUD_SERVICES), 2) AS total_cloud_service_credits,
-FROM QUERY_HISTORY_MATERIALIZED;
-
--- [Optional] Sample the search fields
-SELECT 
-    QUERY_ID,
-    QUERY_TYPE,
-    USER_NAME,
-    DATABASE_NAME,
-    PERFORMANCE_CATEGORY,
-    COST_CATEGORY,
-    LEFT(SEARCH_METADATA, 100) AS search_metadata_preview,
-    LEFT(QUERY_SUMMARY, 150) AS query_summary_preview,
-    START_TIME
-FROM QUERY_HISTORY_MATERIALIZED 
-ORDER BY START_TIME DESC
-LIMIT 5;
-
-
--- 4. Create the search service
-USE ROLE TECHUP25_RL;
-USE SCHEMA TECHUP25.AGENTIC_AI;
--- Create cortexsearch service
--- Note: It will take 1-2 minutes to create the search service
-CREATE OR REPLACE CORTEX SEARCH SERVICE QUERY_HISTORY_SEARCH_SERVICE
-ON QUERY_TEXT  -- Primary searchable column (SQL text content)
-ATTRIBUTES (
-    -- Core identifiers for filtering and context
-    QUERY_ID,
-    QUERY_TYPE,
-    
-    -- User and security context
-    USER_NAME,
-    ROLE_NAME,
-    USER_TYPE,
-    
-    -- Infrastructure context
-    DATABASE_NAME,
-    SCHEMA_NAME,
-    WAREHOUSE_NAME,
-    WAREHOUSE_SIZE,
-    
-    -- Execution context
-    START_TIME,
-    END_TIME,
-    EXECUTION_STATUS,
-    ERROR_CODE,
-    ERROR_MESSAGE,
-    
-    -- Performance metrics
-    TOTAL_ELAPSED_TIME,
-    BYTES_SCANNED,
-    PERCENTAGE_SCANNED_FROM_CACHE,
-    
-    -- Cost information
-    CREDITS_USED_CLOUD_SERVICES,
-    
-    -- Search-optimized fields
-    SEARCH_METADATA,
-    QUERY_SUMMARY,
-    PERFORMANCE_CATEGORY,
-    COST_CATEGORY,
-    
-    -- Spill indicators (for performance analysis)
-    BYTES_SPILLED_TO_LOCAL_STORAGE,
-    BYTES_SPILLED_TO_REMOTE_STORAGE
-)
-WAREHOUSE = TECHUP25_WH  -- Change this to your preferred warehouse
-TARGET_LAG = '1 HOUR'   -- How often to refresh the search index
-AS
-SELECT 
-    QUERY_TEXT,
-    QUERY_ID,
-    QUERY_TYPE,
-    USER_NAME,
-    ROLE_NAME,
-    USER_TYPE,
-    DATABASE_NAME,
-    SCHEMA_NAME,
-    WAREHOUSE_NAME,
-    WAREHOUSE_SIZE,
-    START_TIME,
-    END_TIME,
-    EXECUTION_STATUS,
-    ERROR_CODE,
-    ERROR_MESSAGE,
-    TOTAL_ELAPSED_TIME,
-    BYTES_SCANNED,
-    PERCENTAGE_SCANNED_FROM_CACHE,
-    CREDITS_USED_CLOUD_SERVICES,
-    SEARCH_METADATA,
-    QUERY_SUMMARY,
-    PERFORMANCE_CATEGORY,
-    COST_CATEGORY,
-    BYTES_SPILLED_TO_LOCAL_STORAGE,
-    BYTES_SPILLED_TO_REMOTE_STORAGE
-FROM QUERY_HISTORY_MATERIALIZED;
-
--- /** [Optional] Start of test. 
--- Note: Wait a few minutes after creation for indexing to complete
--- Test the search service with sample queries
--- Test 1: Find queries by SQL pattern
-SELECT 'TEST 1: Find SELECT queries on SALES database' AS test_description;
-SELECT SNOWFLAKE.CORTEX.SEARCH_PREVIEW(
-    'TECHUP25.AGENTIC_AI.QUERY_HISTORY_SEARCH_SERVICE',
-    '{
-        "query": "SELECT FROM sales database table",
-        "columns": ["QUERY_ID", "USER_NAME", "QUERY_SUMMARY", "QUERY_TEXT"],
-        "limit": 3
-    }'
-);
-
--- Test 2: Find expensive queries
-SELECT 'TEST 2: Find expensive or long-running queries' AS test_description;
-SELECT SNOWFLAKE.CORTEX.SEARCH_PREVIEW(
-    'TECHUP25.AGENTIC_AI.QUERY_HISTORY_SEARCH_SERVICE',
-    '{
-        "query": "expensive long running high cost query optimization",
-        "columns": ["QUERY_ID", "USER_NAME", "COST_CATEGORY", "PERFORMANCE_CATEGORY", "QUERY_SUMMARY"],
-        "limit": 3
-    }'
-);
-
--- Test 3: Find queries with errors
-SELECT 'TEST 3: Find failed queries with error messages' AS test_description;
-SELECT SNOWFLAKE.CORTEX.SEARCH_PREVIEW(
-    'TECHUP25.AGENTIC_AI.QUERY_HISTORY_SEARCH_SERVICE',
-    '{
-        "query": "error failed compilation timeout",
-        "columns": ["QUERY_ID", "USER_NAME", "ERROR_CODE", "ERROR_MESSAGE", "QUERY_SUMMARY"],
-        "limit": 3
-    }'
-);
-
--- Test 4: Find queries by specific user or role patterns
-SELECT 'TEST 4: Find queries by data engineering roles' AS test_description;
-SELECT SNOWFLAKE.CORTEX.SEARCH_PREVIEW(
-    'TECHUP25.AGENTIC_AI.QUERY_HISTORY_SEARCH_SERVICE',
-    '{
-        "query": "data engineer ETL transformation pipeline",
-        "columns": ["USER_NAME", "ROLE_NAME", "DATABASE_NAME", "QUERY_TYPE", "QUERY_SUMMARY"],
-        "limit": 3
-    }'
-);
-
--- Test 5: Find queries with performance issues
-SELECT 'TEST 5: Find queries that spilled to disk' AS test_description;
-SELECT SNOWFLAKE.CORTEX.SEARCH_PREVIEW(
-    'TECHUP25.AGENTIC_AI.QUERY_HISTORY_SEARCH_SERVICE',
-    '{
-        "query": "memory spill disk storage performance optimization",
-        "columns": ["QUERY_ID", "USER_NAME", "BYTES_SPILLED_TO_LOCAL_STORAGE", "BYTES_SPILLED_TO_REMOTE_STORAGE", "QUERY_SUMMARY"],
-        "limit": 3
-    }'
-);
-
--- Advanced search examples with filters
-SELECT 'ADVANCED: Find recent expensive queries by specific users' AS test_description;
-SELECT SNOWFLAKE.CORTEX.SEARCH_PREVIEW(
-    'TECHUP25.AGENTIC_AI.QUERY_HISTORY_SEARCH_SERVICE',
-    '{
-        "query": "expensive query optimization performance tuning",
-        "columns": ["QUERY_ID", "USER_NAME", "COST_CATEGORY", "QUERY_SUMMARY", "START_TIME"],
-        "limit": 5
-    }'
-);
-
--- Utility: Check search service status and statistics
-SELECT 'SEARCH SERVICE STATUS' AS info;
-SHOW CORTEX SEARCH SERVICES LIKE 'TECHUP25.AGENTIC_AI.QUERY_HISTORY_SEARCH_SERVICE';
-
--- Utility: Get search service information
-SELECT 
-    'SEARCH SERVICE INFO' AS category,
-    COUNT(*) AS indexed_records
-FROM QUERY_HISTORY_MATERIALIZED;
-
-SELECT 
-    'RECENT DATA AVAILABILITY' AS category,
-    MIN(START_TIME) AS earliest_query,
-    MAX(START_TIME) AS latest_query,
-    COUNT(DISTINCT USER_NAME) AS unique_users,
-    COUNT(DISTINCT DATABASE_NAME) AS unique_databases,
-    COUNT(DISTINCT QUERY_TYPE) AS unique_query_types
-FROM QUERY_HISTORY_MATERIALIZED;
--- [Optional] End of test. **/
-
--- 4-2. Get Cortex Knowledge Base.
-USE ROLE ACCOUNTADMIN;
--- If the below fails to run, you may need to accept marketplace terms before proceeding
-CREATE DATABASE IF NOT EXISTS IDENTIFIER('"SNOWFLAKE_DOCUMENTATION"') FROM LISTING IDENTIFIER('"GZSTZ67BY9OQ4"');
-GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE_DOCUMENTATION TO ROLE TECHUP25_RL;
-
--- 5. Create the semantic view.
-USE ROLE ACCOUNTADMIN;
-USE SCHEMA TECHUP25.AGENTIC_AI;
-CALL SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML(
-  'TECHUP25.AGENTIC_AI', 
-$$
-name: SNOWFLAKE_HOUSEKEEPING_AGENT
+name: PLATFORM_HEALTH_ANALYST_SM
 description: This is the Platform Health & Governance Model. It provides a unified business layer over the Snowflake ACCOUNT_USAGE schema, designed for platform owners and administrators. The model is optimized for natural language queries with Cortex Analyst, allowing users to proactively manage the environment by asking questions related to cost efficiency, operational performance, and security governance.
 tables:
   - name: QUERY_HISTORY
@@ -1451,6 +931,14 @@ tables:
         description: Unique identifier for the schema that the user belongs to.
         expr: USER_SCHEMA_ID
         data_type: NUMBER(38,0)
+      - name: WAREHOUSE_ID
+        description: Unique identifier for the warehouse where the query was executed.
+        expr: WAREHOUSE_ID
+        data_type: NUMBER(38,0)
+        sample_values:
+          - '711517'
+          - '186'
+          - '711400'
     filters:
       - name: AdminQueries
         synonyms:
@@ -2036,7 +1524,7 @@ tables:
           - selectivity insights
           - WHERE clause insights
         description: A filter for insights related to inefficient WHERE clauses and filter selectivity problems.
-        expr: TO_VARCHAR(MESSAGE) ILIKE '%WHERE clause%' OR TO_VARCHAR(MESSAGE) ILIKE '%filter%' OR TO_VARCHAR(MESSAGE) ILIKE '%selectivity%'
+        expr: MESSAGE ILIKE '%WHERE clause%' OR MESSAGE ILIKE '%filter%' OR MESSAGE ILIKE '%selectivity%'
       - name: HighImpactInsights
         synonyms:
           - critical insights
@@ -2044,7 +1532,7 @@ tables:
           - important insights
           - major performance issues
         description: A filter for insights with high potential performance impact, focusing on critical optimization opportunities.
-        expr: TO_VARCHAR(MESSAGE) ILIKE '%large amount of data%' OR TO_VARCHAR(MESSAGE) ILIKE '%significantly reduce%' OR TO_VARCHAR(MESSAGE) ILIKE '%no effect%'
+        expr: MESSAGE ILIKE '%large amount of data%' OR MESSAGE ILIKE '%significantly reduce%' OR MESSAGE ILIKE '%no effect%'
       - name: LongRunningQueryInsights
         synonyms:
           - duration insights
@@ -2101,7 +1589,7 @@ tables:
           - high impact insight rate
           - severe issue percentage
         description: The percentage of insights that indicate critical performance issues requiring immediate attention.
-        expr: (COUNT(CASE WHEN TO_VARCHAR(MESSAGE) ILIKE '%large amount of data%' OR TO_VARCHAR(MESSAGE) ILIKE '%no effect%' THEN 1 END) * 100.0) / COUNT(*)
+        expr: (COUNT(CASE WHEN MESSAGE ILIKE '%large amount of data%' OR MESSAGE ILIKE '%no effect%' THEN 1 END) * 100.0) / COUNT(*)
       - name: OptimizationOpportunityPercentage
         synonyms:
           - improvement opportunity rate
@@ -2473,6 +1961,18 @@ tables:
           - '0.735555556'
           - '0.808888889'
           - '0.666666667'
+      - name: WAREHOUSE_ID
+        synonyms:
+          - compute identifier number
+          - warehouse fact id
+          - warehouse numeric id
+        description: Unique identifier for the warehouse where the metering data was collected.
+        expr: WAREHOUSE_ID
+        data_type: NUMBER(38,0)
+        sample_values:
+          - '49'
+          - '39'
+          - '195'
     filters:
       - name: ActiveWarehouses
         synonyms:
@@ -2983,7 +2483,7 @@ tables:
         expr: (COUNT(CASE WHEN IS_TRANSIENT = 'YES' THEN 1 END) * 100.0) / COUNT(*)
     primary_key:
       columns:
-        - SCHEMA_NAME
+        - SCHEMA_ID
   - name: ROLES
     synonyms:
       - security roles
@@ -4509,7 +4009,7 @@ tables:
           - multi-table views
           - sophisticated views
         description: A filter for views with complex definitions containing joins, subqueries, or complex logic.
-        expr: TO_VARCHAR(VIEW_DEFINITION) ILIKE '%JOIN%' OR TO_VARCHAR(VIEW_DEFINITION) ILIKE '%UNION%' OR TO_VARCHAR(VIEW_DEFINITION) ILIKE '%SUBQUERY%' OR LENGTH(VIEW_DEFINITION) > 1000
+        expr: VIEW_DEFINITION ILIKE '%JOIN%' OR VIEW_DEFINITION ILIKE '%UNION%' OR VIEW_DEFINITION ILIKE '%SUBQUERY%' OR LENGTH(VIEW_DEFINITION) > 1000
       - name: InsertableViews
         synonyms:
           - data modification views
@@ -4518,6 +4018,14 @@ tables:
           - write-enabled views
         description: A filter for views that support INSERT operations, allowing data modification through the view.
         expr: INSERTABLE_INTO = 'YES'
+      - name: MaterializedViews
+        synonyms:
+          - cached views
+          - materialized views
+          - precomputed views
+          - stored views
+        description: A filter for materialized views that store query results for faster access.
+        expr: IS_MATERIALIZED = 'YES'
       - name: RecentlyCreatedViews
         synonyms:
           - fresh views
@@ -4566,7 +4074,15 @@ tables:
           - multi-table view rate
           - sophisticated view percentage
         description: The percentage of views with complex definitions (joins, unions, subqueries), indicating query abstraction complexity.
-        expr: (COUNT(CASE WHEN TO_VARCHAR(VIEW_DEFINITION) ILIKE '%JOIN%' OR TO_VARCHAR(VIEW_DEFINITION) ILIKE '%UNION%' OR LENGTH(VIEW_DEFINITION) > 1000 THEN 1 END) * 100.0) / COUNT(*)
+        expr: (COUNT(CASE WHEN VIEW_DEFINITION ILIKE '%JOIN%' OR VIEW_DEFINITION ILIKE '%UNION%' OR LENGTH(VIEW_DEFINITION) > 1000 THEN 1 END) * 100.0) / COUNT(*)
+      - name: MaterializedViewPercentage
+        synonyms:
+          - cached view percentage
+          - materialized view adoption
+          - materialized view rate
+          - precomputed view rate
+        description: The percentage of views that are materialized for performance optimization, indicating query optimization strategy.
+        expr: (COUNT(CASE WHEN IS_MATERIALIZED = 'YES' THEN 1 END) * 100.0) / COUNT(*)
       - name: SecureViewPercentage
         synonyms:
           - access-controlled view rate
@@ -4773,7 +4289,7 @@ tables:
           - governance tags
           - regulatory tags
         description: A filter for tags used for regulatory compliance and audit purposes.
-        expr: TO_VARCHAR(TAG_NAME) ILIKE '%COMPLIANCE%' OR TO_VARCHAR(TAG_NAME) ILIKE '%GDPR%' OR TO_VARCHAR(TAG_NAME) ILIKE '%HIPAA%' OR TO_VARCHAR(TAG_NAME) ILIKE '%SOX%' OR TO_VARCHAR(TAG_NAME) ILIKE '%AUDIT%'
+        expr: TAG_NAME ILIKE '%COMPLIANCE%' OR TAG_NAME ILIKE '%GDPR%' OR TAG_NAME ILIKE '%HIPAA%' OR TAG_NAME ILIKE '%SOX%' OR TAG_NAME ILIKE '%AUDIT%'
       - name: EnumeratedTags
         synonyms:
           - allowed value tags
@@ -4813,7 +4329,7 @@ tables:
           - security level tags
           - security tags
         description: A filter for tags used for data security classification and governance.
-        expr: TO_VARCHAR(TAG_NAME) ILIKE '%SECURITY%' OR TO_VARCHAR(TAG_NAME) ILIKE '%CLASSIFICATION%' OR TO_VARCHAR(TAG_NAME) ILIKE '%CONFIDENTIAL%' OR TO_VARCHAR(TAG_NAME) ILIKE '%SENSITIVE%'
+        expr: TAG_NAME ILIKE '%SECURITY%' OR TAG_NAME ILIKE '%CLASSIFICATION%' OR TAG_NAME ILIKE '%CONFIDENTIAL%' OR TAG_NAME ILIKE '%SENSITIVE%'
     metrics:
       - name: ActiveTagPercentage
         synonyms:
@@ -4830,7 +4346,7 @@ tables:
           - compliance tag rate
           - regulatory tag percentage
         description: The percentage of tags used for regulatory compliance and audit purposes (GDPR, HIPAA, SOX).
-        expr: (COUNT(CASE WHEN TO_VARCHAR(TAG_NAME) ILIKE '%COMPLIANCE%' OR TO_VARCHAR(TAG_NAME) ILIKE '%GDPR%' OR TO_VARCHAR(TAG_NAME) ILIKE '%HIPAA%' OR TO_VARCHAR(TAG_NAME) ILIKE '%SOX%' THEN 1 END) * 100.0) / COUNT(*)
+        expr: (COUNT(CASE WHEN TAG_NAME ILIKE '%COMPLIANCE%' OR TAG_NAME ILIKE '%GDPR%' OR TAG_NAME ILIKE '%HIPAA%' OR TAG_NAME ILIKE '%SOX%' THEN 1 END) * 100.0) / COUNT(*)
       - name: EnumeratedTagPercentage
         synonyms:
           - allowed value tag ratio
@@ -4854,7 +4370,7 @@ tables:
           - security classification rate
           - security tag rate
         description: The percentage of tags used for security classification and governance purposes.
-        expr: (COUNT(CASE WHEN TO_VARCHAR(TAG_NAME) ILIKE '%SECURITY%' OR TO_VARCHAR(TAG_NAME) ILIKE '%CLASSIFICATION%' OR TO_VARCHAR(TAG_NAME) ILIKE '%CONFIDENTIAL%' THEN 1 END) * 100.0) / COUNT(*)
+        expr: (COUNT(CASE WHEN TAG_NAME ILIKE '%SECURITY%' OR TAG_NAME ILIKE '%CLASSIFICATION%' OR TAG_NAME ILIKE '%CONFIDENTIAL%' THEN 1 END) * 100.0) / COUNT(*)
       - name: TotalTagCount
         synonyms:
           - number of tags
@@ -5096,7 +4612,7 @@ tables:
           - conditional policies
           - logic-based policies
         description: A filter for row access policies with complex conditional logic and multiple criteria.
-        expr: TO_VARCHAR(POLICY_BODY) ILIKE '%AND%' OR TO_VARCHAR(POLICY_BODY) ILIKE '%OR%' OR TO_VARCHAR(POLICY_BODY) ILIKE '%CASE%' OR TO_VARCHAR(POLICY_BODY) ILIKE '%WHEN%'
+        expr: POLICY_BODY ILIKE '%AND%' OR POLICY_BODY ILIKE '%OR%' OR POLICY_BODY ILIKE '%CASE%' OR POLICY_BODY ILIKE '%WHEN%'
       - name: RecentlyCreatedPolicies
         synonyms:
           - fresh policies
@@ -5120,7 +4636,7 @@ tables:
           - role filtering policies
           - role-based policies
         description: A filter for row access policies that implement role-based access control filtering.
-        expr: TO_VARCHAR(POLICY_BODY) ILIKE '%CURRENT_ROLE%' OR TO_VARCHAR(POLICY_BODY) ILIKE '%IS_ROLE_IN_SESSION%' OR TO_VARCHAR(POLICY_BODY) ILIKE '%ROLE%'
+        expr: POLICY_BODY ILIKE '%CURRENT_ROLE%' OR POLICY_BODY ILIKE '%IS_ROLE_IN_SESSION%' OR POLICY_BODY ILIKE '%ROLE%'
       - name: UserBasedPolicies
         synonyms:
           - user access policies
@@ -5128,7 +4644,7 @@ tables:
           - user-based policies
           - user-specific policies
         description: A filter for row access policies that implement user-based access control filtering.
-        expr: TO_VARCHAR(POLICY_BODY) ILIKE '%CURRENT_USER%' OR TO_VARCHAR(POLICY_BODY) ILIKE '%USER%' OR TO_VARCHAR(POLICY_BODY) ILIKE '%SESSION%'
+        expr: POLICY_BODY ILIKE '%CURRENT_USER%' OR POLICY_BODY ILIKE '%USER%' OR POLICY_BODY ILIKE '%SESSION%'
     metrics:
       - name: ActivePolicyPercentage
         synonyms:
@@ -5145,7 +4661,7 @@ tables:
           - conditional policy rate
           - logic-based policy rate
         description: The percentage of policies with complex conditional logic, indicating sophisticated access control patterns.
-        expr: (COUNT(CASE WHEN TO_VARCHAR(POLICY_BODY) ILIKE '%AND%' OR TO_VARCHAR(POLICY_BODY) ILIKE '%OR%' OR TO_VARCHAR(POLICY_BODY) ILIKE '%CASE%' THEN 1 END) * 100.0) / COUNT(*)
+        expr: (COUNT(CASE WHEN POLICY_BODY ILIKE '%AND%' OR POLICY_BODY ILIKE '%OR%' OR POLICY_BODY ILIKE '%CASE%' THEN 1 END) * 100.0) / COUNT(*)
       - name: PolicyCreationRate
         synonyms:
           - new policy velocity
@@ -5161,7 +4677,7 @@ tables:
           - role filtering rate
           - role-based policy rate
         description: The percentage of policies implementing role-based access control filtering.
-        expr: (COUNT(CASE WHEN TO_VARCHAR(POLICY_BODY) ILIKE '%CURRENT_ROLE%' OR TO_VARCHAR(POLICY_BODY) ILIKE '%IS_ROLE_IN_SESSION%' THEN 1 END) * 100.0) / COUNT(*)
+        expr: (COUNT(CASE WHEN POLICY_BODY ILIKE '%CURRENT_ROLE%' OR POLICY_BODY ILIKE '%IS_ROLE_IN_SESSION%' THEN 1 END) * 100.0) / COUNT(*)
       - name: TotalPolicyCount
         synonyms:
           - number of policies
@@ -5177,7 +4693,7 @@ tables:
           - user-based policy rate
           - user-specific policy ratio
         description: The percentage of policies implementing user-based access control filtering.
-        expr: (COUNT(CASE WHEN TO_VARCHAR(POLICY_BODY) ILIKE '%CURRENT_USER%' OR TO_VARCHAR(POLICY_BODY) ILIKE '%USER%' THEN 1 END) * 100.0) / COUNT(*)
+        expr: (COUNT(CASE WHEN POLICY_BODY ILIKE '%CURRENT_USER%' OR POLICY_BODY ILIKE '%USER%' THEN 1 END) * 100.0) / COUNT(*)
     primary_key:
       columns:
         - POLICY_ID
@@ -5363,7 +4879,7 @@ tables:
           - sandbox databases
           - test databases
         description: A filter for databases that appear to be development or testing environments.
-        expr: TO_VARCHAR(DATABASE_NAME) ILIKE '%DEV%' OR TO_VARCHAR(DATABASE_NAME) ILIKE '%TEST%' OR TO_VARCHAR(DATABASE_NAME) ILIKE '%SANDBOX%' OR TO_VARCHAR(DATABASE_NAME) ILIKE '%STAGING%'
+        expr: DATABASE_NAME ILIKE '%DEV%' OR DATABASE_NAME ILIKE '%TEST%' OR DATABASE_NAME ILIKE '%SANDBOX%' OR DATABASE_NAME ILIKE '%STAGING%'
       - name: ImportedDatabases
         synonyms:
           - cross-account databases
@@ -5379,7 +4895,7 @@ tables:
           - prod databases
           - production databases
         description: A filter for databases that appear to be production environments based on naming conventions.
-        expr: TO_VARCHAR(DATABASE_NAME) ILIKE '%PROD%' OR TO_VARCHAR(DATABASE_NAME) ILIKE '%PRODUCTION%' OR TO_VARCHAR(DATABASE_NAME) ILIKE '%LIVE%'
+        expr: DATABASE_NAME ILIKE '%PROD%' OR DATABASE_NAME ILIKE '%PRODUCTION%' OR DATABASE_NAME ILIKE '%LIVE%'
       - name: RecentlyCreatedDatabases
         synonyms:
           - fresh databases
@@ -5444,7 +4960,7 @@ tables:
           - prod environment percentage
           - production database rate
         description: The percentage of databases that appear to be production environments based on naming conventions.
-        expr: (COUNT(CASE WHEN TO_VARCHAR(DATABASE_NAME) ILIKE '%PROD%' OR TO_VARCHAR(DATABASE_NAME) ILIKE '%PRODUCTION%' THEN 1 END) * 100.0) / COUNT(*)
+        expr: (COUNT(CASE WHEN DATABASE_NAME ILIKE '%PROD%' OR DATABASE_NAME ILIKE '%PRODUCTION%' THEN 1 END) * 100.0) / COUNT(*)
       - name: ReplicatedDatabasePercentage
         synonyms:
           - disaster recovery rate
@@ -5479,7 +4995,7 @@ tables:
         expr: (COUNT(CASE WHEN IS_TRANSIENT = 'YES' THEN 1 END) * 100.0) / COUNT(*)
     primary_key:
       columns:
-        - DATABASE_NAME
+        - DATABASE_ID
 relationships:
   - name: UserExecutedQuery
     left_table: QUERY_HISTORY
@@ -5668,18 +5184,18 @@ verified_queries:
           COUNT(*) AS active_policy_count,
           COUNT(
             CASE
-              WHEN TO_VARCHAR(rap.policy_body) ILIKE '%CURRENT_ROLE%' THEN 1
+              WHEN rap.policy_body ILIKE '%CURRENT_ROLE%' THEN 1
             END
           ) AS role_based_policies,
           COUNT(
             CASE
-              WHEN TO_VARCHAR(rap.policy_body) ILIKE '%CURRENT_USER%' THEN 1
+              WHEN rap.policy_body ILIKE '%CURRENT_USER%' THEN 1
             END
           ) AS user_based_policies,
           COUNT(
             CASE
-              WHEN TO_VARCHAR(rap.policy_body) ILIKE '%CASE%'
-              OR TO_VARCHAR(rap.policy_body) ILIKE '%WHEN%' THEN 1
+              WHEN rap.policy_body ILIKE '%CASE%'
+              OR rap.policy_body ILIKE '%WHEN%' THEN 1
             END
           ) AS conditional_policies
         FROM
@@ -5702,8 +5218,8 @@ verified_queries:
           ) AS pii_tags,
           COUNT(
             CASE
-              WHEN TO_VARCHAR(t.tag_name) ILIKE '%SECURITY%'
-              OR TO_VARCHAR(t.tag_name) ILIKE '%CLASSIFICATION%' THEN 1
+              WHEN t.tag_name ILIKE '%SECURITY%'
+              OR t.tag_name ILIKE '%CLASSIFICATION%' THEN 1
             END
           ) AS security_tags,
           COUNT(
@@ -6796,118 +6312,3 @@ module_custom_instructions:
     - Prefer EXISTS over IN for subquery performance when checking for existence
     - Use appropriate WHERE clause filters to limit data scanning
     - Consider using LIMIT for exploratory queries to prevent runaway results
-$$);
-
---6. Create Cortex Agents
-USE ROLE TECHUP25_RL;
-USE SCHEMA TECHUP25.AGENTIC_AI;
-CREATE OR REPLACE AGENT TECHUP25.AGENTIC_AI.SNOWFLAKE_HOUSEKEEPING_AGENT
-WITH PROFILE='{ "display_name": "Snowflake Housekeeping Agent" }'
-    COMMENT=$$ This is an agent that can answer questions about Snowflake platform monitoring, cost optimization, and governance questions. $$
-FROM SPECIFICATION $$
-{
-    "models": {
-      "orchestration": ""
-    },
-    "instructions": {
-      "response": "You are a data analyst who has access to Snowflake usage and cost.",
-      "orchestration": "Use cortex search for known entities and pass the results to cortex analyst for detailed analysis.",
-      "sample_questions": [
-        {
-          "question": "expensive query optimization performance tuning"
-        }
-      ]
-    },
-    "tools": [
-      {
-        "tool_spec": {
-          "type": "cortex_search",
-          "name": "cortex_search_snowflake_query_history",
-          "description": "Allows users to query Snowflake query history."
-        }
-      },
-      {
-        "tool_spec": {
-          "type": "cortex_search",
-          "name": "cortex_snowflake_documentation",
-          "description": "Allows users to get documentations from Snowflake Documentation."
-        }
-      },
-      {
-        "tool_spec": {
-          "type": "cortex_analyst_text_to_sql",
-          "name": "snowflake_account_usage",
-          "description": "This tool allows users to query the Snowflake account usage schema. It provides a unified business layer over the Snowflake ACCOUNT_USAGE schema, designed for platform owners and administrators. The model is optimized for natural language queries with Cortex Analyst, allowing users to proactively manage the environment by asking questions related to cost efficiency, operational performance, and security governance."
-        }
-      }
-    ],
-    "tool_resources": {
-        "cortex_search_snowflake_query_history": {
-          "id_column": "QUERY_TEXT",
-          "max_results": 5,
-          "name": "TECHUP25.AGENTIC_AI.QUERY_HISTORY_SEARCH_SERVICE"
-        },
-        "cortex_snowflake_documentation": {
-          "id_column": "CHUNK",
-          "max_results": 5,
-          "name": "SNOWFLAKE_DOCUMENTATION.SHARED.CKE_SNOWFLAKE_DOCS_SERVICE"
-        },
-        "snowflake_account_usage": {
-          "semantic_view": "TECHUP25.AGENTIC_AI.SNOWFLAKE_HOUSEKEEPING_AGENT"
-        }
-      }
-}
-$$;
-
---7. Create MCP Server
-USE ROLE TECHUP25_RL;
-CREATE OR REPLACE MCP SERVER TECHUP25.AGENTIC_AI.HOUSEKEEPING_MCP_SERVER FROM SPECIFICATION
-$$
-tools:
-  - name: "Snowflake Housekeeping Cortex Search Service"
-    identifier: "TECHUP25.{{ENV}}AGENTIC_AI.QUERY_HISTORY_SEARCH_SERVICE"
-    type: "CORTEX_SEARCH_SERVICE_QUERY"
-    description: "A tool that performs keyword and vector search over Snowflake query history."
-    title: "Snowflake Housekeeping Cortex Search Service"
-
-  - name: "Snowflake Housekeeping Cortex Documentation"
-    identifier: "SNOWFLAKE_DOCUMENTATION.SHARED.CKE_SNOWFLAKE_DOCS_SERVICE"
-    type: "CORTEX_SEARCH_SERVICE_QUERY"
-    description: "A tool that performs keyword and vector search over Snowflake documentation."
-    title: "Snowflake Documentation Search Service"
-
-  - name: "Snowflake Housekeeping Cortex Analyst"
-    identifier: "TECHUP25.AGENTIC_AI.MODELS/semantic_model.yaml"
-    type: "CORTEX_ANALYST_MESSAGE"
-    description: "A tool that performs structured data analysis over Snowflake query history."
-    title: "Snowflake Housekeeping Cortex Analyst"
-    config:
-        warehouse: "TECHUP25_wh"
-$$;
-
--- GRANT USAGE ON MCP SERVER TECHUP25.AGENTIC_AI.SNOWFLAKE_HOUSEKEEPING_MCP_SERVER TO ROLE TECHUP25_RL;
-
--- 8. Open Cussor and set the Snowflake_TECHUP25 as the MCP server
-
--- add the following to your .cursor/mcp.json.
---    "Snowflake_TECHUP25": {
---        "url": "https://{your_org_name}.{your_account_name}.snowflakecomputing.com/api/v2/databases/TECHUP25/schemas/AGENTIC_AI/mcp-servers/SNOWFLAKE_HOUSEKEEPING_MCP_SERVER",
---            "headers": {
---              "Authorization": "Bearer {your_pat_token}"
---            }
---      }
---}
-
-grant role techup25_rl to role accountadmin;
-
-ALTER USER GH_ACTION_USER ADD PROGRAMMATIC ACCESS TOKEN GH_ACTION_PAT
-ROLE_RESTRICTION = 'TECHUP25_RL';
-
-
--- 9. Cleanup Script
--- Run this section to remove all resources created above
--- USE ROLE ACCOUNTADMIN;
--- DROP USER IF EXISTS GH_ACTION_USER;
--- DROP AUTHENTICATION POLICY TECHUP25.AGENTIC_AI.PAT_ALLOW;
--- DROP DATABASE IF EXISTS TECHUP25;
--- DROP ROLE IF EXISTS TECHUP25_RL;
