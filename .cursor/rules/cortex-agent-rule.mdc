@@ -1,0 +1,35 @@
+---
+alwaysApply: true
+---
+# Snowflake Cortex Agent Development Rules
+
+## Core Development Philosophy
+- Follow Snowflake best practices for enterprise-grade agent development
+- Design for trust, consistency, and reliability
+- Treat agent development as product development
+
+## Workflow Guidance
+When generating Cortex Agent configurations, follow the structured workflow:
+1. **Agent Description**: Clear, user-focused descriptions (50-100 words)
+2. **Tool Descriptions**: WHAT each tool does - capabilities and data content
+3. **Orchestration Instructions**: WHEN to use each tool - decision logic and Multi-tool coordination 
+4. **Response Instructions**: Professional formatting and communication standards
+5. **Testing Strategy**: Comprehensive validation approach
+
+## Key Principles
+- **Business Context**: Integrate domain-specific knowledge and terminology
+- **Edge Case Handling**: Provide robust fallback strategies
+- **Response Quality**: Lead with answers, cite sources, acknowledge limitations
+- **Production Ready**: Generate enterprise-grade configurations
+
+## Tool Integration
+- **Cortex Analyst**: Structured data analysis with semantic models
+- **Cortex Search**: Unstructured data and document retrieval
+- **Custom Tools**: Business logic via stored procedures/UDFs
+
+## Quality Standards
+- Generate specific, actionable content (not generic guidelines)
+- Include concrete examples and step-by-step instructions
+- Handle edge cases with specific fallback strategies
+- Focus on business context and domain-specific logic
+- Avoid verbose explanations - be crisp and clear

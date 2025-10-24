@@ -496,7 +496,7 @@ FROM QUERY_HISTORY_MATERIALIZED;
 
 -- 4-2. Get Cortex Knowledge Base.
 USE ROLE ACCOUNTADMIN;
-CREATE DATABASE if not exists IDENTIFIER('"SNOWFLAKE_DOCUMENTATION"') FROM LISTING IDENTIFIER('"GZSTZ67BY9OQ4"');
+CREATE DATABASE IF NOT EXISTS IDENTIFIER('"SNOWFLAKE_DOCUMENTATION"') FROM LISTING IDENTIFIER('"GZSTZ67BY9OQ4"');
 GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE_DOCUMENTATION TO ROLE TECHUP25_RL;
 
 -- 5. Create Stage for the semantic model.
@@ -598,10 +598,10 @@ $$
       title: "Snowflake Housekeeping Cortex Search Service"
 
     - name: "Snowflake Housekeeping Cortex Documentation"
-      identifier: "SNOWFLAKE_DOCUMENTATION.SHARED"
-      type: "CKE_SNOWFLAKE_DOCS_SERVICE"
+      identifier: "SNOWFLAKE_DOCUMENTATION.SHARED.CKE_SNOWFLAKE_DOCS_SERVICE"
+      type: "CORTEX_SEARCH_SERVICE_QUERY"
       description: "A tool that performs keyword and vector search over Snowflake documentation."
-      title: "Snowflake Housekeeping Cortex Documentation"
+      title: "Snowflake Documentation Search Service"
 
     - name: "Snowflake Housekeeping Cortex Analyst"
       identifier: "TECHUP25.AGENTIC_AI.MODELS/semantic_model.yaml"
