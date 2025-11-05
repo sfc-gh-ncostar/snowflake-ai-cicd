@@ -3,7 +3,7 @@ USE ROLE TECHUP25_RL;
 CALL SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML( 
   'TECHUP25.{{ENV}}AGENTIC_AI', 
 $$
-name: SNOWFLAKE_HOUSEKEEPING_AGENT
+name: SNOWFLAKE_HOUSEKEEPING_AGENT 
 description: This is the Platform Health & Governance Model. It provides a unified business layer over the Snowflake ACCOUNT_USAGE schema, designed for platform owners and administrators. The model is optimized for natural language queries with Cortex Analyst, allowing users to proactively manage the environment by asking questions related to cost efficiency, operational performance, and security governance.
 tables:
   - name: QUERY_HISTORY
