@@ -1,0 +1,75 @@
+# Add your ORG-ACCOUNT URI here please.
+@BASE_URL = https://<YOUR_ACCOUNT_NAME>.snowflakecomputing.com
+@SCHEMA = <YOUR_SCHEMA_NAME>
+@MCP_SERVER = <YOUR_MCP_SERVER_NAME>
+
+# Add your PAT token here - note it must have permissions to use the MCP server
+# See here for more detail: https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-mcp
+# Note, we use a PAT token here for simplicity, you should use OAuth for production implementations.
+@TOKEN = <YOUR_PAT_TOKEN>
+
+### Initialize MCP Server
+
+POST {{BASE_URL}}/api/v2/databases/TECHUP25/schemas/{{SCHEMA}}/mcp-servers/{{MCP_SERVER}}
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer {{TOKEN}}
+
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": { "protocolVersion": "2025-06-18" }
+}
+
+### List tools
+
+POST {{BASE_URL}}/api/v2/databases/TECHUP25/schemas/{{SCHEMA}}/mcp-servers/{{MCP_SERVER}}
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer {{TOKEN}}
+
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/list",
+    "params": {}
+}
+
+### Use tool - Snowflake Agent
+
+POST {{BASE_URL}}/api/v2/databases/TECHUP25/schemas/{{SCHEMA}}/mcp-servers/{{MCP_SERVER}}
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer {{TOKEN}}
+
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "name": "snowflake_housekeeping_agent",
+        "arguments": {
+            "query": "Which warehouse would benefit from multi-cluster configuration?"
+        }
+    }
+}
+
+### Use tool - Snowflake documentation
+
+POST {{BASE_URL}}/api/v2/databases/TECHUP25/schemas/{{SCHEMA}}/mcp-servers/{{MCP_SERVER}}
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer {{TOKEN}}
+
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "name": "Snowflake Housekeeping Cortex Documentation",
+        "arguments": {
+            "query": "what are snowflake mcp servers"
+        }
+    }
+}
