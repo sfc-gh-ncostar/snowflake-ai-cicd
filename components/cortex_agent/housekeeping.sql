@@ -1,6 +1,6 @@
 --!jinja
-USE ROLE TECHUP25_RL; 
-CREATE OR REPLACE AGENT identifier('TECHUP25.{{ENV}}AGENTIC_AI.SNOWFLAKE_HOUSEKEEPING_AGENT')
+USE ROLE AI_CICD_RL; 
+CREATE OR REPLACE AGENT identifier('AI_CICD.{{ENV}}AGENTIC_AI.SNOWFLAKE_HOUSEKEEPING_AGENT')
 WITH PROFILE='{ "display_name": "{{ENV}}Snowflake Housekeeping Agent" }'
     COMMENT=$$ This is an agent that can answer questions about Snowflake platform monitoring, cost optimization, and governance questions. $$
 FROM SPECIFICATION $$
@@ -44,7 +44,7 @@ FROM SPECIFICATION $$
         "cortex_search_snowflake_query_history": {
           "id_column": "QUERY_TEXT",
           "max_results": 5,
-          "name": "TECHUP25.{{ENV}}AGENTIC_AI.QUERY_HISTORY_SEARCH_SERVICE"
+          "name": "AI_CICD.{{ENV}}AGENTIC_AI.QUERY_HISTORY_SEARCH_SERVICE"
         },
         "cortex_snowflake_documentation": {
           "id_column": "CHUNK",
@@ -52,7 +52,7 @@ FROM SPECIFICATION $$
           "name": "SNOWFLAKE_DOCUMENTATION.SHARED.CKE_SNOWFLAKE_DOCS_SERVICE"
         },
         "snowflake_account_usage": {
-          "semantic_view": "TECHUP25.{{ENV}}AGENTIC_AI.SNOWFLAKE_HOUSEKEEPING_AGENT"
+          "semantic_view": "AI_CICD.{{ENV}}AGENTIC_AI.SNOWFLAKE_HOUSEKEEPING_AGENT"
         }
       }
 }
