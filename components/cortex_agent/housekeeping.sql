@@ -1,5 +1,5 @@
 --!jinja
-USE ROLE AI_CICD_RL; 
+USE ROLE AI_CICD_RL;
 CREATE OR REPLACE AGENT identifier('AI_CICD.{{ENV}}AGENTIC_AI.SNOWFLAKE_HOUSEKEEPING_AGENT')
 WITH PROFILE='{ "display_name": "{{ENV}}Snowflake Housekeeping Agent" }'
     COMMENT=$$ This is an agent that can answer questions about Snowflake platform monitoring, cost optimization, and governance questions. $$
