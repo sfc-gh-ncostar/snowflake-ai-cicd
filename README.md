@@ -1,6 +1,6 @@
 # AI Deployment Patterns on Snowflake
 
-[![Deploy Service to Environments](https://github.com/ncostar/snowflake-ai-cicd/actions/workflows/deploy-service.yml/badge.svg)](https://github.com/ncostar/snowflake-ai-cicd/actions/workflows/deploy-service.yml)
+[![Deploy Service to Environments](https://github.com/sfc-gh-ncostar/snowflake-ai-cicd/actions/workflows/deploy-service.yml/badge.svg)](https://github.com/sfc-gh-ncostar/snowflake-ai-cicd/actions/workflows/deploy-service.yml)
 
 ## Overview
 
